@@ -3,8 +3,8 @@ uvicorn[standard]==0.32.1
 sqlalchemy==2.0.36
 psycopg[binary]==3.2.3
 alembic==1.14.0
-pydantic==2.10.3
-pydantic[email]==2.10.3
+pydantic==2.11.0
+pydantic[email]==2.11.0
 pydantic-settings==2.7.0
 email-validator==2.2.0
 python-jose[cryptography]==3.3.0
