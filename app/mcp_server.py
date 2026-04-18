@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import func, or_, select
 
 from app.db import SessionLocal
@@ -49,7 +50,20 @@ from app.services.memory import enabled_connectors, get_connector
 
 log = logging.getLogger("nakatomi.mcp")
 
-mcp = FastMCP("Nakatomi CRM")
+# Two non-default settings:
+#  - streamable_http_path='/'. Default is '/mcp', which when mounted under
+#    our '/mcp' prefix would make the public URL /mcp/mcp. MCP clients
+#    expect exactly /mcp/.
+#  - TransportSecuritySettings.enable_dns_rebinding_protection=False. The
+#    default whitelists only localhost and blocks everything else; our
+#    Railway domain (or any remote host) gets rejected with a 500.
+#    We're behind Railway's edge with TLS termination — the DNS-rebinding
+#    attack model assumes a local-only server, which isn't our deploy.
+mcp = FastMCP(
+    "Nakatomi CRM",
+    streamable_http_path="/",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
 
 
 # ---------------------------------------------------------------------------
