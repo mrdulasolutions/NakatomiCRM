@@ -44,5 +44,7 @@
       <rect x="164" y="136" width="16" height="14"/><rect x="192" y="136" width="16" height="14"/><rect x="220" y="136" width="16" height="14"/><rect x="248" y="136" width="16" height="14"/><rect x="276" y="136" width="16" height="14"/><rect x="304" y="136" width="16" height="14"/><rect x="332" y="136" width="16" height="14"/>
       <rect x="164" y="160" width="16" height="14"/><rect x="192" y="160" width="16" height="14"/><rect x="220" y="160" width="16" height="14"/><rect x="248" y="160" width="16" height="14"/><rect x="276" y="160" width="16" height="14"/><rect x="304" y="160" width="16" height="14"/><rect x="332" y="160" width="16" height="14"/>
     </g>
+    <!-- One lit window, heist floor -->
+    <rect x="276" y="292" width="16" height="14" fill="#f2c14e"/>
   </g>
 </svg>
