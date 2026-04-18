@@ -1,7 +1,15 @@
 # MCP (Model Context Protocol) usage
 
-Nakatomi exposes an MCP server at `/mcp` using streamable HTTP transport. The
-same workspace API key that authenticates REST calls authenticates MCP tools.
+Nakatomi exposes an MCP server at `/mcp` using streamable HTTP transport.
+
+**Two auth modes, pick the one your client supports:**
+
+- **OAuth 2.1** — what Claude Desktop's "Add Custom Connector" GUI and
+  ChatGPT's Custom Connectors do. The client discovers our auth server via
+  `/.well-known/oauth-authorization-server`, runs the PKCE authorization-code
+  flow in the browser, and gets back an access token + refresh token.
+- **Static bearer API key** — what Claude Code, Cursor, and raw MCP clients
+  use. Paste `Authorization: Bearer nk_...` in the MCP client config.
 
 ## Tools
 
@@ -29,15 +37,20 @@ same workspace API key that authenticates REST calls authenticates MCP tools.
 | `memory_trace` | List all memories linked to one CRM entity |
 | `ingest` | Normalize CSV / JSON / vCard / text and land it as CRM rows |
 
-## Claude Desktop (custom connector)
+## Claude Desktop (custom connector, OAuth)
 
-Open *Settings → Connectors → Add custom connector → HTTP MCP Server*:
+Open *Settings → Connectors → Add custom connector*:
 
 - **Name:** Nakatomi
 - **URL:** `https://your-app.up.railway.app/mcp`
-- **Headers:** `Authorization: Bearer nk_<your_key>`
 
-Save, then toggle the connector on in any chat.
+Click *Connect*. Claude opens a browser tab, the Nakatomi login page
+appears, you sign in with your Nakatomi email + password, pick a workspace
+if you're in more than one, and consent. Claude stores the tokens.
+
+No header to paste — Claude Desktop's connector UI doesn't expose that
+field. It discovers our OAuth endpoints via `/.well-known/oauth-authorization-server`
+and handles the PKCE flow itself.
 
 ## Cursor
 

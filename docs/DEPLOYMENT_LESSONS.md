@@ -396,6 +396,51 @@ curl -sS $BASE/health | jq -e '.ok == true'
 
 ---
 
+### §12 — The client UI determines your auth story (v0.2 deploy)
+
+**Symptom**
+
+User added Nakatomi's URL to Claude Desktop's "Add Custom Connector"
+dialog, clicked *Connect*, and got an error. The dialog never asked for
+a header or API key — there was only a *Connect* button that tried to
+start an OAuth flow.
+
+**Root cause**
+
+The MCP spec defines **OAuth 2.1** as the auth mechanism for remote
+servers. Claude Desktop's connector GUI follows that spec. Static bearer
+tokens are a CLI-only convenience (Claude Code, Cursor, raw clients).
+
+We had shipped only bearer. The GUI had no way to attach one.
+
+**Fix**
+
+Implement an OAuth 2.1 provider: discovery metadata endpoints, dynamic
+client registration, authorization-code flow with PKCE, token endpoint,
+revocation. Issue access tokens as short-lived ApiKey rows so the
+request-auth path doesn't change. See [`app/routers/oauth.py`](../app/routers/oauth.py)
+for the shipped implementation — ~450 lines, one migration.
+
+Two side-lessons:
+
+- **A bearer-token MCP server works with agent harnesses but not GUIs.**
+  Plan for OAuth from day one if you want to support Claude Desktop or
+  ChatGPT Custom Connectors.
+- **`.format()` on HTML templates explodes on CSS.** CSS has literal
+  `{ }` pairs; `.format()` tries to parse them as placeholders. Use
+  `str.replace()` over a marker list, or a real template engine. We
+  used replace for the 11-field login page.
+- **Version bumps cascade.** Upgrading `mcp` from 1.2 to 1.27 forced a
+  pydantic bump (the 1.27 transitive constraint), which surfaced an
+  unused `type: ignore` comment in our code (mcp 1.27's stubs declared
+  the attribute we'd suppressed). Each upgrade = fresh `pip install -r
+  requirements.txt` locally, fresh mypy run, fresh pytest.
+- **If you're writing to a model field, grep the model first.** The
+  refresh-token rotation branch wrote `refresh_row.data = {...}`, but
+  ApiKey never had a `data` column. Column added in the same migration.
+
+---
+
 ## What we're changing going forward
 
 - The `install.sh` + `docker-compose.yml` local path is documented and
