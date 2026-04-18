@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,6 +17,8 @@ from app.services.storage import get_storage
 
 router = APIRouter(prefix="/files", tags=["files"])
 
+_CHUNK = 1 << 20  # 1 MB
+
 
 @router.post("", response_model=FileOut, status_code=201)
 async def upload_file(
@@ -28,17 +29,30 @@ async def upload_file(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
 ) -> FileOut:
-    data = await upload.read()
-    sha = hashlib.sha256(data).hexdigest()
-    key = f"{p.workspace.id}/{uuid.uuid4()}/{upload.filename}"
+    """Stream the upload to storage — never buffers the whole file in memory.
+
+    Starlette's UploadFile wraps a SpooledTemporaryFile (spills to disk at
+    ~1 MB). We read it once in chunks to compute SHA-256 and size, seek back
+    to 0, and hand the underlying file object to storage.put() — which both
+    LocalStorage and S3Storage consume as a streaming source.
+    """
+    sha = hashlib.sha256()
+    size = 0
+    while chunk := await upload.read(_CHUNK):
+        sha.update(chunk)
+        size += len(chunk)
+    await upload.seek(0)
+
+    key = f"{p.workspace.id}/{uuid.uuid4()}/{upload.filename or 'file'}"
     storage = get_storage()
-    storage.put(key, io.BytesIO(data), upload.content_type or "application/octet-stream")
+    storage.put(key, upload.file, upload.content_type or "application/octet-stream")
+
     f = File(
         workspace_id=p.workspace.id,
         filename=upload.filename or "file",
         content_type=upload.content_type or "application/octet-stream",
-        size_bytes=len(data),
-        sha256=sha,
+        size_bytes=size,
+        sha256=sha.hexdigest(),
         storage_key=key,
         entity_type=entity_type,
         entity_id=entity_id,
@@ -83,15 +97,19 @@ def download_file(file_id: str, db: Session = Depends(get_db), p: Principal = De
     if not f or f.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
     storage = get_storage()
-    # Prefer presigned URL when available, else stream bytes.
+    # Prefer a presigned URL when the backend offers one — the client hits
+    # object storage directly and we don't relay the bytes.
     url = storage.presigned_url(f.storage_key)
     if url:
         return {"url": url, "expires_seconds": 900}
-    data = storage.get(f.storage_key)
-    return Response(
-        content=data,
+    # Otherwise stream the body. iter_chunks closes the stream when exhausted.
+    return StreamingResponse(
+        storage.iter_chunks(f.storage_key),
         media_type=f.content_type,
-        headers={"Content-Disposition": f'attachment; filename="{f.filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{f.filename}"',
+            "Content-Length": str(f.size_bytes),
+        },
     )
 
 

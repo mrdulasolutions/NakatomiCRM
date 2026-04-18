@@ -132,7 +132,7 @@ job: let a human confirm at a glance what the agents did last night.
 - [ ] Saved views / queries
 - [x] Durable webhook retry (worker + queue — in-process, SKIP LOCKED, backoff schedule, marks dead after max retries)
 - [x] Rate limiting per API key (fixed 60s window, per-key override, Retry-After header on 429)
-- [ ] Streaming file upload (currently buffered in memory)
+- [x] Streaming file upload + download (chunked SHA at upload, StreamingResponse on download, Storage.open() + iter_chunks helper on the interface)
 - [ ] pgvector (optional) for workspaces that prefer server-side semantic search
 - [ ] Row-level audit diffs (field-level before/after)
 - [ ] Merge: "resolve duplicate contacts" flow
