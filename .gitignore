@@ -15,3 +15,4 @@ data/
 *.egg-info/
 dist/
 build/
+.claude/scheduled_tasks.lock
