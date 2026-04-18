@@ -41,10 +41,10 @@ def test_similar_name_same_company_scores_0_8(client, workspace):
 
 
 def test_same_last_name_first_variant(client, workspace):
-    """Prefix matching catches nickname/long-form pairs like Tom/Thomas."""
+    """Prefix matching catches long-form pairs like Matt/Matthew."""
     h = workspace["headers"]
-    _mk(client, h, first_name="Tom", last_name="Hanks")
-    _mk(client, h, first_name="Thomas", last_name="Hanks")
+    _mk(client, h, first_name="Matt", last_name="Smith")
+    _mk(client, h, first_name="Matthew", last_name="Smith")
 
     r = client.get("/contacts/duplicates", headers=h)
     pairs = r.json()["items"]
@@ -121,8 +121,8 @@ def test_duplicates_feeds_into_merge(client, workspace):
 
 def test_min_score_filter(client, workspace):
     h = workspace["headers"]
-    _mk(client, h, first_name="Tom", last_name="Hanks")
-    _mk(client, h, first_name="Thomas", last_name="Hanks")  # 0.7 pair
+    _mk(client, h, first_name="Matt", last_name="Smith")
+    _mk(client, h, first_name="Matthew", last_name="Smith")  # 0.7 pair
 
     # Default min_score=0.7 catches it.
     r = client.get("/contacts/duplicates", headers=h)

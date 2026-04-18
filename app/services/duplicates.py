@@ -9,10 +9,11 @@ Strategies, highest confidence first:
    common "Ada Lovelace" ↔ "Ada Lovelacce" case when the company is known.
 3. **last_name_same_first_variant** — identical last name (case-insensitive)
    AND first names either match exactly or one is a prefix of the other
-   (min length 2). Score: 0.7. Catches "Tom/Thomas", "Matt/Matthew",
-   "Ada/Ada". We specifically don't use trigram similarity on first names
-   because short strings share too few trigrams for it to be a useful
-   signal ("Tom" vs "Thomas" = 0.08).
+   (min length 2). Score: 0.7. Catches "Matt/Matthew", "Chris/Christopher",
+   and any long-form-of pair. Does **not** catch "Tom/Thomas" — Thomas
+   starts with "Th", not "Tom", so it's a nickname relationship rather
+   than a prefix one. We don't try to model nicknames. Trigram on short
+   first names is unusable as a signal ("Tom"/"Thomas" = 0.08 similarity).
 
 Pairs are deduplicated across strategies — each (a, b) surfaces once with
 the highest score found. Backed by the trigram GIN indexes added in
