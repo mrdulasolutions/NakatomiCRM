@@ -124,6 +124,7 @@ and just say **"nakatomi dashboard"** — the skill boots the stack and opens Ch
 ## Project files
 
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — visual tour of how the pieces wire together (component layout, webhook flow, ingest, export/import, memory cross-linking)
+- [`docs/DEPLOYMENT_LESSONS.md`](./docs/DEPLOYMENT_LESSONS.md) — the eleven gotchas from our first Railway deploy; read before deploying to a new cloud target
 - [`AgentLab.md`](./AgentLab.md) — recipes for solo agents, multi-agent swarms, harness setups, connector chains, and anti-patterns. Start here if you're wiring agents at Nakatomi.
 - [Wiki](https://github.com/mrdulasolutions/NakatomiCRM/wiki) — deep dives on every subsystem (auth, webhooks, memory, ingest, deployment, troubleshooting)
 - [`ROADMAP.md`](./ROADMAP.md) — what's shipped, what's in flight, what's next

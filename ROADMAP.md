@@ -153,6 +153,27 @@ job: let a human confirm at a glance what the agents did last night.
 
 ---
 
+## Deploy hardening (from v0.1.1's first-deploy lessons)
+
+See [`docs/DEPLOYMENT_LESSONS.md`](./docs/DEPLOYMENT_LESSONS.md) for the
+eleven issues we hit on the first Railway deploy. These are follow-ups
+that turn lessons into guardrails:
+
+- [ ] Add a test that runs `alembic upgrade head` against a clean DB so
+      migration-ordering bugs fail in CI, not in prod.
+- [ ] Retrofit migration 0001 to use explicit `op.create_table` calls
+      instead of `Base.metadata.create_all` (the shortcut that started
+      the fresh-install cascade).
+- [ ] CI step that loads `requirements.txt` in a clean venv and resolves
+      transitive deps, catching mcp↔pydantic-style conflicts before
+      push.
+- [ ] Comment top-level deps in `requirements.txt` with the reason for
+      each pin.
+- [ ] Railway template publish + one-click deploy button in README
+      (already on v1.2 but the button is currently manual).
+- [ ] A GitHub Issue template "Deploy to new cloud target" that links
+      the checklist.
+
 ## AgentLab expansion
 
 [AgentLab.md](./AgentLab.md) is a living document. These are patterns we want
