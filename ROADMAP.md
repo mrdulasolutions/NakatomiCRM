@@ -102,7 +102,9 @@ shape.
   - `json` — generic JSON with a mapping spec
   - `text` — LLM-friendly "note + entity-mention" split (agent does extraction; we standardize)
 - [x] Standardization pipeline: lowercase email, E.164 phone, URL canonicalization, whitespace trim, tag dedup
-- [ ] Dedup strategies per entity (exact email, domain match, fuzzy name+company)
+- [x] Fuzzy duplicate detection (`GET /contacts/duplicates` — pg_trgm-based;
+      strategies: exact email, similar name + same company, same last name +
+      similar first name; feeds into `/contacts/merge`)
 - [ ] Dry-run mode (`?dry_run=true`) — returns what *would* change
 - [ ] Attachment ingest — accept file + mapping spec, produce `File` records + entity links
 - [ ] Webhook ingest — accept an inbound webhook from a connector, route to the right adapter

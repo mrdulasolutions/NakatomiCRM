@@ -38,8 +38,15 @@ from app.security import generate_api_key, hash_password  # noqa: E402
 
 @pytest.fixture(scope="session", autouse=True)
 def _schema() -> Iterator[None]:
-    """Create a clean schema once per test session."""
+    """Create a clean schema once per test session.
+
+    We bypass Alembic here and use ``Base.metadata.create_all`` — fast and
+    deterministic. Any extensions or raw-SQL objects that migrations add
+    (e.g. pg_trgm) have to be enabled here too, since ``create_all`` only
+    creates tables.
+    """
     with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         Base.metadata.drop_all(bind=conn)
         Base.metadata.create_all(bind=conn)
     yield
