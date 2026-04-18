@@ -119,7 +119,7 @@ job: let a human confirm at a glance what the agents did last night.
 - [ ] Views:
   - [x] Timeline stream (workspace-wide)
   - [x] Recent contacts / companies / deals
-  - [ ] Deal pipeline kanban (read-only)
+  - [x] Deal pipeline kanban (read-only; tab on /dashboard with columns per stage, totals per column, won/lost coloring)
   - [ ] Webhook delivery log
   - [ ] Memory link inspector (per entity)
   - [ ] Audit log search
