@@ -17,8 +17,9 @@ humans who operate those agents.
 - Read the append-only timeline and audit log for any entity or the whole workspace
 - Register webhooks for any event type (contact.created, deal.stage_changed, …)
 - Ingest records from CSV, vCard, JSON, or text blobs via `POST /ingest`
-- Recall across plugged-in memory systems (DocDeploy, Supermemory, …) via
-  `POST /memory/recall` and cross-link memories to CRM entities
+- Recall across plugged-in memory systems (DocDeploy, Supermemory, GBrain, …)
+  via `POST /memory/recall` (or the `memory_recall` MCP tool) and cross-link
+  memories to CRM entities with `memory_link` / `POST /memory/link`
 
 ## Auth
 

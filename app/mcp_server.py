@@ -30,6 +30,8 @@ from app.models import (
     Deal,
     DealStatus,
     EntityType,
+    IngestRun,
+    MemoryLink,
     Note,
     Pipeline,
     Relationship,
@@ -41,6 +43,9 @@ from app.models import (
     Workspace,
 )
 from app.security import hash_api_key
+from app.services.ingest import adapters as _ingest_adapters  # noqa: F401  — registers adapters
+from app.services.ingest.base import run_ingest
+from app.services.memory import enabled_connectors, get_connector
 
 log = logging.getLogger("nakatomi.mcp")
 
@@ -644,6 +649,231 @@ def timeline(ctx: Context, entity_type: str, entity_id: str, limit: int = 50) ->
             }
             for r in rows
         ]
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Memory tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def memory_list_connectors(ctx: Context) -> list[str]:
+    """List enabled memory connectors (docdeploy, supermemory, gbrain, ...)."""
+    _principal_from_ctx(ctx)[1].close()
+    return list(enabled_connectors().keys())
+
+
+@mcp.tool()
+def memory_recall(
+    ctx: Context,
+    query: str,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    limit: int = 10,
+    connectors: list[str] | None = None,
+) -> list[dict]:
+    """Fan-out semantic recall across configured memory connectors and merge the results.
+
+    Pass ``entity_type`` + ``entity_id`` to anchor the recall on a specific CRM entity.
+    Results include any known ``crm_links`` (cross-links to CRM entities) so the agent
+    can pivot back into the CRM from a matched memory.
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        targets = connectors or list(enabled_connectors().keys())
+        out: list[dict] = []
+        for name in targets:
+            connector = get_connector(name)
+            if not connector:
+                continue
+            try:
+                got = connector.recall(
+                    workspace_id=p.workspace.id,
+                    query=query,
+                    crm_entity_type=entity_type,
+                    crm_entity_id=entity_id,
+                    limit=limit,
+                )
+            except Exception as e:  # noqa: BLE001
+                log.warning("recall on '%s' failed: %s", name, e)
+                continue
+            for m in got:
+                links = db.scalars(
+                    select(MemoryLink).where(
+                        MemoryLink.workspace_id == p.workspace.id,
+                        MemoryLink.connector == name,
+                        MemoryLink.external_id == m.external_id,
+                    )
+                ).all()
+                out.append(
+                    {
+                        "connector": m.connector,
+                        "external_id": m.external_id,
+                        "text": m.text,
+                        "score": m.score,
+                        "metadata": m.metadata,
+                        "crm_links": [
+                            f"{link.crm_entity_type.value if hasattr(link.crm_entity_type, 'value') else link.crm_entity_type}:{link.crm_entity_id}"
+                            for link in links
+                        ],
+                    }
+                )
+        out.sort(key=lambda x: x["score"], reverse=True)
+        return out[:limit]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def memory_link(
+    ctx: Context,
+    connector: str,
+    external_id: str,
+    crm_entity_type: str,
+    crm_entity_id: str,
+    note: str | None = None,
+    data: dict | None = None,
+) -> dict:
+    """Cross-link a memory in an external system with a CRM entity. Idempotent on
+    (connector, external_id, crm_entity_type, crm_entity_id)."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        try:
+            et = EntityType(crm_entity_type)
+        except ValueError:
+            raise RuntimeError(f"unknown crm_entity_type '{crm_entity_type}'")
+        link = MemoryLink(
+            workspace_id=p.workspace.id,
+            connector=connector,
+            external_id=external_id,
+            crm_entity_type=et,
+            crm_entity_id=crm_entity_id,
+            note=note,
+            data=data or {},
+        )
+        db.add(link)
+        try:
+            db.flush()
+        except Exception:
+            db.rollback()
+            raise RuntimeError("link already exists")
+        _record_event(
+            db,
+            p,
+            event_type="memory.linked",
+            entity_type=et,
+            entity_id=crm_entity_id,
+            payload={"connector": connector, "external_id": external_id},
+        )
+        db.commit()
+        db.refresh(link)
+        return _serialize(link)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def memory_trace(ctx: Context, entity_type: str, entity_id: str) -> list[dict]:
+    """Return every external memory linked to the given CRM entity."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        try:
+            et = EntityType(entity_type)
+        except ValueError:
+            raise RuntimeError(f"unknown entity_type '{entity_type}'")
+        rows = db.scalars(
+            select(MemoryLink).where(
+                MemoryLink.workspace_id == p.workspace.id,
+                MemoryLink.crm_entity_type == et,
+                MemoryLink.crm_entity_id == entity_id,
+            )
+        ).all()
+        return [_serialize(r) for r in rows]
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Ingest tool
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def ingest(
+    ctx: Context,
+    source: str,
+    format: str,
+    payload: Any,
+    mapping: dict | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Normalize and land external data as CRM rows.
+
+    ``format`` is one of: ``csv``, ``json``, ``vcard``, ``text``. For ``csv`` and
+    ``vcard`` pass the raw string as ``payload``. For ``json`` pass a list of dicts
+    (or a single dict). For ``text`` pass a string and set
+    ``mapping={"entity_type": "contact", "entity_id": "<uuid>"}`` to attach the text
+    as a markdown note on that entity.
+
+    Matches existing rows by ``external_id`` first, then by ``email``/``domain`` where
+    applicable. Returns counts, created/updated ids, and a diagnostics list.
+    Set ``dry_run=true`` to see what would happen without writing.
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        result = run_ingest(
+            db,
+            p,
+            fmt=format.lower(),
+            payload=payload,
+            mapping=mapping,
+            dry_run=dry_run,
+        )
+        run = IngestRun(
+            workspace_id=p.workspace.id,
+            source=source,
+            format=format,
+            actor_user_id=p.user_id,
+            actor_api_key_id=p.api_key_id,
+            record_count=result.record_count,
+            created_count=len(result.created_ids),
+            updated_count=len(result.updated_ids),
+            error_count=result.error_count,
+            diagnostics={"items": result.diagnostics},
+        )
+        db.add(run)
+        db.flush()
+        _record_event(
+            db,
+            p,
+            event_type="ingest.completed",
+            entity_type=EntityType.file,
+            entity_id=run.id,
+            payload={
+                "source": source,
+                "format": format,
+                "record_count": result.record_count,
+                "created": len(result.created_ids),
+                "updated": len(result.updated_ids),
+                "errors": result.error_count,
+            },
+        )
+        if dry_run:
+            db.rollback()
+        else:
+            db.commit()
+        return {
+            "run_id": run.id,
+            "record_count": result.record_count,
+            "created": len(result.created_ids),
+            "updated": len(result.updated_ids),
+            "errors": result.error_count,
+            "created_ids": result.created_ids,
+            "updated_ids": result.updated_ids,
+            "diagnostics": result.diagnostics,
+        }
     finally:
         db.close()
 

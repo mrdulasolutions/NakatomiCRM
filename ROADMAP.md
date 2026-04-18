@@ -81,7 +81,7 @@ entity and (optionally) trigger a CRM action.
 - [ ] Per-workspace connector config (currently global via env)
 - [ ] Conflict policy surface — what to do when an inbound memory write contradicts a CRM field
 - [ ] "Trace" API — `GET /memory/trace/{entity_type}/{entity_id}` returns all known memory refs and their provenance
-- [ ] MCP tools: `memory_recall`, `memory_link`, `memory_trace`
+- [x] MCP tools: `memory_list_connectors`, `memory_recall`, `memory_link`, `memory_trace`
 
 ## v1.4 — Ingest
 
@@ -91,6 +91,7 @@ clean records. Standardization happens inside Nakatomi so every agent sees the s
 shape.
 
 - [x] `POST /ingest` — accepts `{source, format, payload}` and returns diagnostics + created ids
+- [x] MCP tool `ingest` — same contract as REST, callable by agents natively
 - [x] Adapters scaffold:
   - `csv` — header inference + column map hints
   - `vcard` — parse contacts

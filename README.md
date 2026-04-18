@@ -71,7 +71,7 @@ API keys are the recommended path for agents. They're cleaner for MCP clients (w
 - Endpoint: `https://<your-host>/mcp`
 - Transport: streamable HTTP
 - Auth: `Authorization: Bearer nk_<key>` in your MCP client config
-- Tools: `search_contacts`, `get_contact`, `create_contact`, `update_contact`, `search_companies`, `create_company`, `list_pipelines`, `create_deal`, `move_deal_stage`, `log_activity`, `add_note`, `create_task`, `list_tasks`, `relate`, `timeline`, `describe_schema`
+- Tools: `search_contacts`, `get_contact`, `create_contact`, `update_contact`, `search_companies`, `create_company`, `list_pipelines`, `create_deal`, `move_deal_stage`, `log_activity`, `add_note`, `create_task`, `list_tasks`, `relate`, `timeline`, `memory_list_connectors`, `memory_recall`, `memory_link`, `memory_trace`, `ingest`, `describe_schema`
 
 See [docs/MCP.md](./docs/MCP.md) for Claude Desktop, Cursor, and Custom Connector setup recipes.
 

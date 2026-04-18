@@ -23,6 +23,11 @@ same workspace API key that authenticates REST calls authenticates MCP tools.
 | `relate` | Add a typed edge between two entities (relationship graph) |
 | `timeline` | Recent events for one entity |
 | `describe_schema` | Return the full entity/field/event manifest |
+| `memory_list_connectors` | Enabled memory connectors on this deployment |
+| `memory_recall` | Fan-out recall across DocDeploy / Supermemory / GBrain / … |
+| `memory_link` | Cross-link a memory id with a CRM entity |
+| `memory_trace` | List all memories linked to one CRM entity |
+| `ingest` | Normalize CSV / JSON / vCard / text and land it as CRM rows |
 
 ## Claude Desktop (custom connector)
 

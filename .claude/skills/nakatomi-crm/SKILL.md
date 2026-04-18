@@ -79,11 +79,13 @@ for a first-class column in a future Nakatomi release.
 
 ## 10. Link memories
 
-If the user has a memory system plugged in (DocDeploy, Supermemory, etc.),
+If the user has a memory system plugged in (DocDeploy, Supermemory, GBrain, …),
 after creating rich context (a long note, a call transcript, a deal brief),
-`POST /memory/link` to cross-reference the memory id with the CRM entity.
-That way, later `POST /memory/recall` calls surface the right memory for
-the right entity.
+call the MCP tool `memory_link` (or `POST /memory/link`) to cross-reference the
+memory id with the CRM entity. Later `memory_recall` / `POST /memory/recall`
+calls will surface the right memory for the right entity. Use `memory_trace`
+to list every memory linked to one CRM entity before deciding whether to write
+a new one — prevents duplicate memories.
 
 ## 11. Read the timeline, don't rebuild it
 
