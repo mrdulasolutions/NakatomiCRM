@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.deps import Principal, get_principal
-from app.models import Membership, MemberRole, User, Workspace
+from app.models import MemberRole, Membership, User, Workspace
 from app.schemas import LoginRequest, SignupRequest, TokenResponse, UserOut
 from app.security import create_access_token, hash_password, verify_password
 

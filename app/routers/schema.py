@@ -145,22 +145,43 @@ _ENTITIES = [
     ),
     EntitySchemaOut(
         entity="file",
-        fields={"filename": "string", "content_type": "mime", "size_bytes": "int", "entity_type": "enum?", "entity_id": "uuid?"},
+        fields={
+            "filename": "string",
+            "content_type": "mime",
+            "size_bytes": "int",
+            "entity_type": "enum?",
+            "entity_id": "uuid?",
+        },
         endpoints={"upload": "POST /files (multipart)", "download": "GET /files/{id}", "list": "GET /files"},
     ),
 ]
 
 
 _EVENT_TYPES = [
-    "contact.created", "contact.updated", "contact.deleted",
-    "company.created", "company.updated", "company.deleted",
-    "deal.created", "deal.updated", "deal.deleted",
-    "deal.stage_changed", "deal.won", "deal.lost",
-    "activity.created", "activity.deleted",
-    "note.created", "note.updated", "note.deleted",
-    "task.created", "task.updated", "task.deleted",
-    "relationship.created", "relationship.deleted",
-    "file.uploaded", "file.deleted",
+    "contact.created",
+    "contact.updated",
+    "contact.deleted",
+    "company.created",
+    "company.updated",
+    "company.deleted",
+    "deal.created",
+    "deal.updated",
+    "deal.deleted",
+    "deal.stage_changed",
+    "deal.won",
+    "deal.lost",
+    "activity.created",
+    "activity.deleted",
+    "note.created",
+    "note.updated",
+    "note.deleted",
+    "task.created",
+    "task.updated",
+    "task.deleted",
+    "relationship.created",
+    "relationship.deleted",
+    "file.uploaded",
+    "file.deleted",
 ]
 
 

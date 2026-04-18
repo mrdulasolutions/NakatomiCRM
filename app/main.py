@@ -24,11 +24,13 @@ from app.routers import (
     notes,
     pipelines,
     relationships,
-    schema as schema_router,
     tasks,
     timeline,
     webhooks,
     workspaces,
+)
+from app.routers import (
+    schema as schema_router,
 )
 
 logging.basicConfig(

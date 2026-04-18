@@ -88,7 +88,7 @@ ingest.completed
 
 ## Links
 
-- Repository: https://github.com/your-org/nakatomi
+- Repository: https://github.com/mrdulasolutions/NakatomiCRM
 - Roadmap: /ROADMAP.md
 - Ethos: /ETHOS.md
 - MCP usage: /docs/MCP.md

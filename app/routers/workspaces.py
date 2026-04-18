@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import Principal, get_principal, require_role
-from app.models import ApiKey, Membership, MemberRole, User, Workspace
+from app.models import ApiKey, MemberRole, Membership, User, Workspace
 from app.schemas import (
     ApiKeyCreate,
     ApiKeyCreatedOut,
@@ -59,9 +61,7 @@ def invite_member(
     if not user:
         raise HTTPException(status_code=404, detail="user not found (signup required first)")
     existing = db.scalar(
-        select(Membership).where(
-            Membership.workspace_id == p.workspace.id, Membership.user_id == user.id
-        )
+        select(Membership).where(Membership.workspace_id == p.workspace.id, Membership.user_id == user.id)
     )
     if existing:
         raise HTTPException(status_code=409, detail="already a member")
@@ -79,9 +79,7 @@ def remove_member(
     p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
 ) -> OkResponse:
     m = db.scalar(
-        select(Membership).where(
-            Membership.workspace_id == p.workspace.id, Membership.user_id == user_id
-        )
+        select(Membership).where(Membership.workspace_id == p.workspace.id, Membership.user_id == user_id)
     )
     if not m:
         raise HTTPException(status_code=404, detail="not a member")
@@ -129,11 +127,11 @@ def revoke_key(
     db: Session = Depends(get_db),
     p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
 ) -> OkResponse:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     key = db.get(ApiKey, key_id)
     if not key or key.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
-    key.revoked_at = datetime.now(timezone.utc)
+    key.revoked_at = datetime.now(UTC)
     db.commit()
     return OkResponse(message="revoked")

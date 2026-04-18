@@ -9,7 +9,7 @@
       "name": "nakatomi",
       "source": {
         "type": "github",
-        "repo": "your-org/nakatomi",
+        "repo": "mrdulasolutions/NakatomiCRM",
         "branch": "main",
         "dockerfile": "Dockerfile"
       },

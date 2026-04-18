@@ -5,8 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -26,8 +25,8 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 # ---------- JWT (user sessions) ----------
-def create_access_token(subject: str, extra: Optional[dict] = None) -> str:
-    now = datetime.now(timezone.utc)
+def create_access_token(subject: str, extra: dict | None = None) -> str:
+    now = datetime.now(UTC)
     payload = {
         "sub": subject,
         "iat": int(now.timestamp()),
@@ -38,7 +37,7 @@ def create_access_token(subject: str, extra: Optional[dict] = None) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def decode_access_token(token: str) -> Optional[dict]:
+def decode_access_token(token: str) -> dict | None:
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     except JWTError:
@@ -64,7 +63,7 @@ def hash_api_key(full: str) -> str:
     return hashlib.sha256(full.encode()).hexdigest()
 
 
-def parse_api_key_prefix(full: str) -> Optional[str]:
+def parse_api_key_prefix(full: str) -> str | None:
     parts = full.split("_")
     if len(parts) < 3 or parts[0] != API_KEY_PREFIX:
         return None

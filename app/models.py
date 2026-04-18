@@ -13,14 +13,12 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     Integer,
@@ -28,6 +26,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -48,7 +49,7 @@ def _uuid() -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -92,15 +93,11 @@ class TaskStatus(str, enum.Enum):
 
 
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now, nullable=False
     )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +113,7 @@ class Workspace(Base, TimestampMixin):
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
-    members: Mapped[list["Membership"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    members: Mapped[list[Membership]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
 
 
 class User(Base, TimestampMixin):
@@ -125,10 +122,10 @@ class User(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    display_name: Mapped[Optional[str]] = mapped_column(String(255))
+    display_name: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    memberships: Mapped[list[Membership]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Membership(Base, TimestampMixin):
@@ -151,14 +148,14 @@ class ApiKey(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     prefix: Mapped[str] = mapped_column(String(16), nullable=False, index=True)  # visible identifier
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[MemberRole] = mapped_column(Enum(MemberRole), default=MemberRole.member, nullable=False)
-    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # ---------------------------------------------------------------------------
@@ -180,14 +177,14 @@ class Contact(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    external_id: Mapped[Optional[str]] = mapped_column(String(255))
+    external_id: Mapped[str | None] = mapped_column(String(255))
 
-    first_name: Mapped[Optional[str]] = mapped_column(String(255))
-    last_name: Mapped[Optional[str]] = mapped_column(String(255))
-    email: Mapped[Optional[str]] = mapped_column(String(320))
-    phone: Mapped[Optional[str]] = mapped_column(String(64))
-    title: Mapped[Optional[str]] = mapped_column(String(255))
-    company_id: Mapped[Optional[str]] = mapped_column(
+    first_name: Mapped[str | None] = mapped_column(String(255))
+    last_name: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(64))
+    title: Mapped[str | None] = mapped_column(String(255))
+    company_id: Mapped[str | None] = mapped_column(
         ForeignKey("companies.id", ondelete="SET NULL"), index=True
     )
 
@@ -205,15 +202,15 @@ class Company(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    external_id: Mapped[Optional[str]] = mapped_column(String(255))
+    external_id: Mapped[str | None] = mapped_column(String(255))
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    domain: Mapped[Optional[str]] = mapped_column(String(255))
-    website: Mapped[Optional[str]] = mapped_column(String(512))
-    industry: Mapped[Optional[str]] = mapped_column(String(255))
-    employee_count: Mapped[Optional[int]] = mapped_column(Integer)
-    annual_revenue: Mapped[Optional[float]] = mapped_column(Numeric(18, 2))
-    description: Mapped[Optional[str]] = mapped_column(Text)
+    domain: Mapped[str | None] = mapped_column(String(255))
+    website: Mapped[str | None] = mapped_column(String(512))
+    industry: Mapped[str | None] = mapped_column(String(255))
+    employee_count: Mapped[int | None] = mapped_column(Integer)
+    annual_revenue: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    description: Mapped[str | None] = mapped_column(Text)
 
     tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
@@ -221,9 +218,7 @@ class Company(Base, TimestampMixin):
 
 class Pipeline(Base, TimestampMixin):
     __tablename__ = "pipelines"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "slug", name="uq_pipeline_slug"),
-    )
+    __table_args__ = (UniqueConstraint("workspace_id", "slug", name="uq_pipeline_slug"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -232,16 +227,14 @@ class Pipeline(Base, TimestampMixin):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
-    stages: Mapped[list["Stage"]] = relationship(
+    stages: Mapped[list[Stage]] = relationship(
         back_populates="pipeline", cascade="all, delete-orphan", order_by="Stage.position"
     )
 
 
 class Stage(Base, TimestampMixin):
     __tablename__ = "stages"
-    __table_args__ = (
-        UniqueConstraint("pipeline_id", "slug", name="uq_stage_slug"),
-    )
+    __table_args__ = (UniqueConstraint("pipeline_id", "slug", name="uq_stage_slug"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     pipeline_id: Mapped[str] = mapped_column(ForeignKey("pipelines.id", ondelete="CASCADE"), index=True)
@@ -265,20 +258,20 @@ class Deal(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    external_id: Mapped[Optional[str]] = mapped_column(String(255))
+    external_id: Mapped[str | None] = mapped_column(String(255))
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     pipeline_id: Mapped[str] = mapped_column(ForeignKey("pipelines.id", ondelete="RESTRICT"), index=True)
     stage_id: Mapped[str] = mapped_column(ForeignKey("stages.id", ondelete="RESTRICT"), index=True)
     status: Mapped[DealStatus] = mapped_column(Enum(DealStatus), default=DealStatus.open, nullable=False)
-    amount: Mapped[Optional[float]] = mapped_column(Numeric(18, 2))
+    amount: Mapped[float | None] = mapped_column(Numeric(18, 2))
     currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
-    expected_close_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    expected_close_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    primary_contact_id: Mapped[Optional[str]] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
-    company_id: Mapped[Optional[str]] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"))
-    owner_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    primary_contact_id: Mapped[str | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    company_id: Mapped[str | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"))
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
@@ -296,25 +289,23 @@ class Activity(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    external_id: Mapped[Optional[str]] = mapped_column(String(255))
+    external_id: Mapped[str | None] = mapped_column(String(255))
 
     kind: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. "call", "meeting", "email_log"
-    subject: Mapped[Optional[str]] = mapped_column(String(512))
-    body: Mapped[Optional[str]] = mapped_column(Text)
+    subject: Mapped[str | None] = mapped_column(String(512))
+    body: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
-    entity_type: Mapped[Optional[EntityType]] = mapped_column(Enum(EntityType))
-    entity_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False))
+    entity_type: Mapped[EntityType | None] = mapped_column(Enum(EntityType))
+    entity_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
 
-    actor_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
 class Note(Base, TimestampMixin):
     __tablename__ = "notes"
-    __table_args__ = (
-        Index("ix_note_entity", "entity_type", "entity_id"),
-    )
+    __table_args__ = (Index("ix_note_entity", "entity_type", "entity_id"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -323,7 +314,7 @@ class Note(Base, TimestampMixin):
     entity_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
 
     body: Mapped[str] = mapped_column(Text, nullable=False)  # markdown
-    author_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    author_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
@@ -337,18 +328,18 @@ class Task(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
-    external_id: Mapped[Optional[str]] = mapped_column(String(255))
+    external_id: Mapped[str | None] = mapped_column(String(255))
 
     title: Mapped[str] = mapped_column(String(512), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.open, nullable=False)
-    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    entity_type: Mapped[Optional[EntityType]] = mapped_column(Enum(EntityType))
-    entity_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False))
+    entity_type: Mapped[EntityType | None] = mapped_column(Enum(EntityType))
+    entity_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
 
-    assignee_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    assignee_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
@@ -387,7 +378,9 @@ class Relationship(Base, TimestampMixin):
     source_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
     target_type: Mapped[EntityType] = mapped_column(Enum(EntityType), nullable=False)
     target_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
-    relation_type: Mapped[str] = mapped_column(String(64), nullable=False)  # free-form, e.g. "knows", "works_at"
+    relation_type: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # free-form, e.g. "knows", "works_at"
     strength: Mapped[float] = mapped_column(Numeric(5, 2), default=1.0, nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
@@ -410,8 +403,8 @@ class TimelineEvent(Base):
     entity_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. "contact.created"
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
-    actor_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    actor_api_key_id: Mapped[Optional[str]] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
     payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
@@ -431,8 +424,8 @@ class Webhook(Base, TimestampMixin):
     events: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)  # ["contact.created", ...]
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    last_delivery_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    last_error: Mapped[Optional[str]] = mapped_column(Text)
+    last_delivery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
 
 
 class WebhookDelivery(Base):
@@ -444,9 +437,9 @@ class WebhookDelivery(Base):
     webhook_id: Mapped[str] = mapped_column(ForeignKey("webhooks.id", ondelete="CASCADE"), index=True)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    status_code: Mapped[Optional[int]] = mapped_column(Integer)
-    response_body: Mapped[Optional[str]] = mapped_column(Text)
-    error: Mapped[Optional[str]] = mapped_column(Text)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    response_body: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     succeeded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
@@ -459,9 +452,7 @@ class WebhookDelivery(Base):
 
 class File(Base, TimestampMixin):
     __tablename__ = "files"
-    __table_args__ = (
-        Index("ix_file_entity", "entity_type", "entity_id"),
-    )
+    __table_args__ = (Index("ix_file_entity", "entity_type", "entity_id"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -469,13 +460,13 @@ class File(Base, TimestampMixin):
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), default="application/octet-stream", nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
-    sha256: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), index=True)
     storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
 
-    entity_type: Mapped[Optional[EntityType]] = mapped_column(Enum(EntityType))
-    entity_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False))
+    entity_type: Mapped[EntityType | None] = mapped_column(Enum(EntityType))
+    entity_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
 
-    uploaded_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    uploaded_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
@@ -489,13 +480,13 @@ class AuditLog(Base):
     __table_args__ = (Index("ix_audit_ws_time", "workspace_id", "created_at"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    workspace_id: Mapped[Optional[str]] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
-    actor_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    actor_api_key_id: Mapped[Optional[str]] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    workspace_id: Mapped[str | None] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
     action: Mapped[str] = mapped_column(String(128), nullable=False)
-    entity_type: Mapped[Optional[str]] = mapped_column(String(64))
-    entity_id: Mapped[Optional[str]] = mapped_column(String(64))
-    ip_address: Mapped[Optional[str]] = mapped_column(String(64))
+    entity_type: Mapped[str | None] = mapped_column(String(64))
+    entity_id: Mapped[str | None] = mapped_column(String(64))
+    ip_address: Mapped[str | None] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
@@ -511,8 +502,11 @@ class MemoryLink(Base, TimestampMixin):
     __tablename__ = "memory_links"
     __table_args__ = (
         UniqueConstraint(
-            "workspace_id", "connector", "external_id",
-            "crm_entity_type", "crm_entity_id",
+            "workspace_id",
+            "connector",
+            "external_id",
+            "crm_entity_type",
+            "crm_entity_id",
             name="uq_memory_link",
         ),
         Index("ix_ml_crm", "workspace_id", "crm_entity_type", "crm_entity_id"),
@@ -525,7 +519,7 @@ class MemoryLink(Base, TimestampMixin):
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
     crm_entity_type: Mapped[EntityType] = mapped_column(Enum(EntityType), nullable=False)
     crm_entity_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
-    note: Mapped[Optional[str]] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
@@ -539,8 +533,8 @@ class IngestRun(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     format: Mapped[str] = mapped_column(String(32), nullable=False)
-    actor_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    actor_api_key_id: Mapped[Optional[str]] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
     record_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

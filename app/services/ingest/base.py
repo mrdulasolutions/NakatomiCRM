@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -99,7 +100,7 @@ def norm_tags(v: Any) -> list[str]:
         return []
     if isinstance(v, str):
         items = [t.strip() for t in re.split(r"[,;|]", v)]
-    elif isinstance(v, (list, tuple, set)):
+    elif isinstance(v, list | tuple | set):
         items = [str(t).strip() for t in v]
     else:
         return []

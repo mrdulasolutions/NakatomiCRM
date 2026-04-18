@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select
@@ -22,11 +21,11 @@ def list_tasks(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    status: Optional[TaskStatus] = None,
-    assignee_user_id: Optional[str] = None,
-    entity_type: Optional[EntityType] = None,
-    entity_id: Optional[str] = None,
-    due_before: Optional[datetime] = None,
+    status: TaskStatus | None = None,
+    assignee_user_id: str | None = None,
+    entity_type: EntityType | None = None,
+    entity_id: str | None = None,
+    due_before: datetime | None = None,
 ):
     query = select(Task).where(Task.workspace_id == p.workspace.id, Task.deleted_at.is_(None))
     if status:
@@ -66,8 +65,15 @@ def create_task(
     t = Task(workspace_id=p.workspace.id, **payload.model_dump())
     db.add(t)
     db.flush()
-    emit(db, p, event_type="task.created", entity_type=EntityType.task,
-         entity_id=t.id, payload={"title": t.title}, background=background)
+    emit(
+        db,
+        p,
+        event_type="task.created",
+        entity_type=EntityType.task,
+        entity_id=t.id,
+        payload={"title": t.title},
+        background=background,
+    )
     db.commit()
     db.refresh(t)
     return TaskOut.model_validate(t)
@@ -96,9 +102,16 @@ def patch_task(
     for k, v in updates.items():
         setattr(t, k, v)
     if updates.get("status") == TaskStatus.done and not t.completed_at:
-        t.completed_at = datetime.now(timezone.utc)
-    emit(db, p, event_type="task.updated", entity_type=EntityType.task,
-         entity_id=t.id, payload={"changes": list(updates.keys())}, background=background)
+        t.completed_at = datetime.now(UTC)
+    emit(
+        db,
+        p,
+        event_type="task.updated",
+        entity_type=EntityType.task,
+        entity_id=t.id,
+        payload={"changes": list(updates.keys())},
+        background=background,
+    )
     db.commit()
     db.refresh(t)
     return TaskOut.model_validate(t)
@@ -118,8 +131,15 @@ def delete_task(
     if hard:
         db.delete(t)
     else:
-        t.deleted_at = datetime.now(timezone.utc)
-    emit(db, p, event_type="task.deleted", entity_type=EntityType.task,
-         entity_id=task_id, payload={"hard": hard}, background=background)
+        t.deleted_at = datetime.now(UTC)
+    emit(
+        db,
+        p,
+        event_type="task.deleted",
+        entity_type=EntityType.task,
+        entity_id=task_id,
+        payload={"hard": hard},
+        background=background,
+    )
     db.commit()
     return OkResponse(message="deleted")

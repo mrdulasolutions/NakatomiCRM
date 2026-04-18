@@ -1,0 +1,76 @@
+[project]
+name = "nakatomi"
+version = "0.1.0"
+description = "A headless, agent-native CRM for Claude, ChatGPT, Perplexity, and Cursor."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [{ name = "Nakatomi contributors" }]
+keywords = ["crm", "agents", "mcp", "fastapi", "headless"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Office/Business",
+]
+
+[project.urls]
+Homepage = "https://github.com/mrdulasolutions/NakatomiCRM"
+Repository = "https://github.com/mrdulasolutions/NakatomiCRM"
+Issues = "https://github.com/mrdulasolutions/NakatomiCRM/issues"
+
+# ---------- Ruff ----------
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["alembic/versions/*", "data/*"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "W",   # pycodestyle warnings
+  "I",   # isort
+  "B",   # bugbear
+  "UP",  # pyupgrade
+  "C4",  # comprehensions
+  "SIM", # simplify
+]
+ignore = [
+  "E501",  # line length handled by formatter
+  "B008",  # FastAPI uses Depends() defaults intentionally
+  "B904",  # re-raise-from is noisy for HTTPException
+  "SIM108", # ternary rewriter over-eager
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B018", "SIM117"]
+"alembic/*" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+# ---------- mypy ----------
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+no_implicit_optional = true
+exclude = ["alembic/versions", "data", ".venv"]
+
+# SQLAlchemy 2.0 has good typing; keep it loose on our side until we type more.
+disable_error_code = ["assignment", "arg-type", "attr-defined", "call-arg", "var-annotated"]
+
+# ---------- pytest ----------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra -q --strict-markers"
+markers = [
+  "slow: marks tests that take >1s",
+  "postgres: requires a running Postgres at TEST_DATABASE_URL",
+]

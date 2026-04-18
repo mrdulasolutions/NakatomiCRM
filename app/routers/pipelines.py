@@ -38,9 +38,7 @@ def create_pipeline(
     if payload.is_default:
         # clear other defaults
         others = db.scalars(
-            select(Pipeline).where(
-                Pipeline.workspace_id == p.workspace.id, Pipeline.id != pipe.id
-            )
+            select(Pipeline).where(Pipeline.workspace_id == p.workspace.id, Pipeline.id != pipe.id)
         ).all()
         for o in others:
             o.is_default = False

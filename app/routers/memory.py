@@ -67,7 +67,10 @@ def recall(
                     text=m.text,
                     score=m.score,
                     metadata=m.metadata,
-                    crm_links=[f"{l.crm_entity_type.value if hasattr(l.crm_entity_type, 'value') else l.crm_entity_type}:{l.crm_entity_id}" for l in links],
+                    crm_links=[
+                        f"{link.crm_entity_type.value if hasattr(link.crm_entity_type, 'value') else link.crm_entity_type}:{link.crm_entity_id}"
+                        for link in links
+                    ],
                 )
             )
     items.sort(key=lambda x: x.score, reverse=True)
@@ -96,10 +99,18 @@ def create_link(
     except Exception:
         db.rollback()
         raise HTTPException(status_code=409, detail="link already exists")
-    emit(db, p, event_type="memory.linked", entity_type=req.crm_entity_type,
-         entity_id=req.crm_entity_id, payload={
-             "connector": req.connector, "external_id": req.external_id,
-         }, background=background)
+    emit(
+        db,
+        p,
+        event_type="memory.linked",
+        entity_type=req.crm_entity_type,
+        entity_id=req.crm_entity_id,
+        payload={
+            "connector": req.connector,
+            "external_id": req.external_id,
+        },
+        background=background,
+    )
     db.commit()
     db.refresh(link)
     return MemoryLinkOut.model_validate(link)
@@ -117,8 +128,15 @@ def delete_link(
         raise HTTPException(status_code=404, detail="not found")
     crm_et, crm_id, conn, ext = link.crm_entity_type, link.crm_entity_id, link.connector, link.external_id
     db.delete(link)
-    emit(db, p, event_type="memory.unlinked", entity_type=crm_et, entity_id=crm_id,
-         payload={"connector": conn, "external_id": ext}, background=background)
+    emit(
+        db,
+        p,
+        event_type="memory.unlinked",
+        entity_type=crm_et,
+        entity_id=crm_id,
+        payload={"connector": conn, "external_id": ext},
+        background=background,
+    )
     db.commit()
     return OkResponse(message="unlinked")
 
@@ -184,13 +202,23 @@ async def inbound_webhook(
                 continue
             db.add(
                 MemoryLink(
-                    workspace_id=p.workspace.id, connector=connector, external_id=ext_id,
-                    crm_entity_type=link_et, crm_entity_id=eid,
-                    note="via inbound webhook", data={"text": item.get("text", "")[:2000]},
+                    workspace_id=p.workspace.id,
+                    connector=connector,
+                    external_id=ext_id,
+                    crm_entity_type=link_et,
+                    crm_entity_id=eid,
+                    note="via inbound webhook",
+                    data={"text": item.get("text", "")[:2000]},
                 )
             )
-            emit(db, p, event_type="memory.linked", entity_type=link_et,
-                 entity_id=eid, payload={"connector": connector, "external_id": ext_id},
-                 background=background)
+            emit(
+                db,
+                p,
+                event_type="memory.linked",
+                entity_type=link_et,
+                entity_id=eid,
+                payload={"connector": connector, "external_id": ext_id},
+                background=background,
+            )
     db.commit()
     return OkResponse(message="ingested")

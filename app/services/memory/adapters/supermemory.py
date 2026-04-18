@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 import httpx
 
@@ -40,7 +39,7 @@ class SupermemoryConnector(MemoryConnector):
         crm_entity_id: str,
         text: str,
         metadata: dict,
-    ) -> Optional[MemoryWriteResult]:
+    ) -> MemoryWriteResult | None:
         if event_type.endswith(".deleted"):
             return None
         payload = {
@@ -70,8 +69,8 @@ class SupermemoryConnector(MemoryConnector):
         *,
         workspace_id: str,
         query: str,
-        crm_entity_type: Optional[str] = None,
-        crm_entity_id: Optional[str] = None,
+        crm_entity_type: str | None = None,
+        crm_entity_id: str | None = None,
         limit: int = 10,
     ) -> list[MemoryItem]:
         payload: dict = {"q": query, "limit": limit, "containerTags": [f"ws:{workspace_id}"]}

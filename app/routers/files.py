@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import io
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -24,8 +23,8 @@ router = APIRouter(prefix="/files", tags=["files"])
 async def upload_file(
     background: BackgroundTasks,
     upload: UploadFile,
-    entity_type: Optional[EntityType] = Form(None),
-    entity_id: Optional[str] = Form(None),
+    entity_type: EntityType | None = Form(None),
+    entity_id: str | None = Form(None),
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
 ) -> FileOut:
@@ -47,9 +46,15 @@ async def upload_file(
     )
     db.add(f)
     db.flush()
-    emit(db, p, event_type="file.uploaded", entity_type=EntityType.file,
-         entity_id=f.id, payload={"filename": f.filename, "size": f.size_bytes},
-         background=background)
+    emit(
+        db,
+        p,
+        event_type="file.uploaded",
+        entity_type=EntityType.file,
+        entity_id=f.id,
+        payload={"filename": f.filename, "size": f.size_bytes},
+        background=background,
+    )
     db.commit()
     db.refresh(f)
     return FileOut.model_validate(f)
@@ -59,8 +64,8 @@ async def upload_file(
 def list_files(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
-    entity_type: Optional[EntityType] = None,
-    entity_id: Optional[str] = None,
+    entity_type: EntityType | None = None,
+    entity_id: str | None = None,
     limit: int = 100,
 ):
     q = select(File).where(File.workspace_id == p.workspace.id, File.deleted_at.is_(None))
@@ -103,7 +108,14 @@ def delete_file(
     storage = get_storage()
     storage.delete(f.storage_key)
     db.delete(f)
-    emit(db, p, event_type="file.deleted", entity_type=EntityType.file,
-         entity_id=file_id, payload={"filename": f.filename}, background=background)
+    emit(
+        db,
+        p,
+        event_type="file.deleted",
+        entity_type=EntityType.file,
+        entity_id=file_id,
+        payload={"filename": f.filename},
+        background=background,
+    )
     db.commit()
     return OkResponse(message="deleted")

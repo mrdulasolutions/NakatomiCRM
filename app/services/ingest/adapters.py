@@ -23,14 +23,11 @@ from app.services.ingest.base import (
     register_adapter,
 )
 
-
 # ---------- CSV ----------
 
 
 @register_adapter("csv")
-def ingest_csv(
-    db: Session, p: Principal, payload: Any, mapping: dict | None, dry_run: bool
-) -> IngestResult:
+def ingest_csv(db: Session, p: Principal, payload: Any, mapping: dict | None, dry_run: bool) -> IngestResult:
     if not isinstance(payload, str):
         return IngestResult(
             error_count=1,
@@ -52,9 +49,7 @@ def ingest_csv(
                 _upsert_contact(db, p, mapped, result, dry_run, row_index=i)
         except Exception as e:  # noqa: BLE001
             result.error_count += 1
-            result.diagnostics.append(
-                {"level": "error", "message": str(e), "row": i}
-            )
+            result.diagnostics.append({"level": "error", "message": str(e), "row": i})
         result.record_count += 1
     return result
 
@@ -63,9 +58,7 @@ def ingest_csv(
 
 
 @register_adapter("json")
-def ingest_json(
-    db: Session, p: Principal, payload: Any, mapping: dict | None, dry_run: bool
-) -> IngestResult:
+def ingest_json(db: Session, p: Principal, payload: Any, mapping: dict | None, dry_run: bool) -> IngestResult:
     if isinstance(payload, dict):
         payload = [payload]
     if not isinstance(payload, list):
@@ -79,9 +72,7 @@ def ingest_json(
     for i, row in enumerate(payload):
         if not isinstance(row, dict):
             result.error_count += 1
-            result.diagnostics.append(
-                {"level": "error", "message": "row is not a dict", "row": i}
-            )
+            result.diagnostics.append({"level": "error", "message": "row is not a dict", "row": i})
             continue
         if mapping:
             mapped = {tgt: row.get(src) for src, tgt in mapping.items() if src != "_entity"}
@@ -94,9 +85,7 @@ def ingest_json(
                 _upsert_contact(db, p, mapped, result, dry_run, row_index=i)
         except Exception as e:  # noqa: BLE001
             result.error_count += 1
-            result.diagnostics.append(
-                {"level": "error", "message": str(e), "row": i}
-            )
+            result.diagnostics.append({"level": "error", "message": str(e), "row": i})
         result.record_count += 1
     return result
 
@@ -154,15 +143,13 @@ def ingest_vcard(
             "email": (card.get("EMAIL") or [None])[0],
             "phone": (card.get("TEL") or [None])[0],
             "title": (card.get("TITLE") or [None])[0],
-            "data": {"vcard": {k: v for k, v in card.items()}},
+            "data": {"vcard": dict(card.items())},
         }
         try:
             _upsert_contact(db, p, mapped, result, dry_run, row_index=i)
         except Exception as e:  # noqa: BLE001
             result.error_count += 1
-            result.diagnostics.append(
-                {"level": "error", "message": str(e), "row": i}
-            )
+            result.diagnostics.append({"level": "error", "message": str(e), "row": i})
         result.record_count += 1
     return result
 
@@ -173,9 +160,7 @@ def ingest_vcard(
 
 
 @register_adapter("text")
-def ingest_text(
-    db: Session, p: Principal, payload: Any, mapping: dict | None, dry_run: bool
-) -> IngestResult:
+def ingest_text(db: Session, p: Principal, payload: Any, mapping: dict | None, dry_run: bool) -> IngestResult:
     if not isinstance(payload, str):
         return IngestResult(
             error_count=1,
@@ -243,15 +228,11 @@ def _upsert_contact(
     existing = None
     if external_id:
         existing = db.scalar(
-            select(Contact).where(
-                Contact.workspace_id == p.workspace.id, Contact.external_id == external_id
-            )
+            select(Contact).where(Contact.workspace_id == p.workspace.id, Contact.external_id == external_id)
         )
     if not existing and email:
         existing = db.scalar(
-            select(Contact).where(
-                Contact.workspace_id == p.workspace.id, func.lower(Contact.email) == email
-            )
+            select(Contact).where(Contact.workspace_id == p.workspace.id, func.lower(Contact.email) == email)
         )
     fields = {
         "first_name": norm_str(row.get("first_name")),
@@ -267,7 +248,11 @@ def _upsert_contact(
 
     if dry_run:
         result.diagnostics.append(
-            {"level": "info", "message": f"would {'update' if existing else 'create'} contact", "row": row_index}
+            {
+                "level": "info",
+                "message": f"would {'update' if existing else 'create'} contact",
+                "row": row_index,
+            }
         )
         return
     if existing:
@@ -302,9 +287,7 @@ def _upsert_company(
     existing = None
     if external_id:
         existing = db.scalar(
-            select(Company).where(
-                Company.workspace_id == p.workspace.id, Company.external_id == external_id
-            )
+            select(Company).where(Company.workspace_id == p.workspace.id, Company.external_id == external_id)
         )
     if not existing and domain:
         existing = db.scalar(
@@ -326,7 +309,11 @@ def _upsert_company(
 
     if dry_run:
         result.diagnostics.append(
-            {"level": "info", "message": f"would {'update' if existing else 'create'} company", "row": row_index}
+            {
+                "level": "info",
+                "message": f"would {'update' if existing else 'create'} company",
+                "row": row_index,
+            }
         )
         return
     if existing:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -21,8 +19,8 @@ def list_notes(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    entity_type: Optional[EntityType] = None,
-    entity_id: Optional[str] = None,
+    entity_type: EntityType | None = None,
+    entity_id: str | None = None,
 ):
     query = select(Note).where(Note.workspace_id == p.workspace.id)
     if entity_type:
@@ -59,9 +57,15 @@ def create_note(
     )
     db.add(n)
     db.flush()
-    emit(db, p, event_type="note.created", entity_type=EntityType.note,
-         entity_id=n.id, payload={"on": n.entity_type.value, "entity_id": n.entity_id},
-         background=background)
+    emit(
+        db,
+        p,
+        event_type="note.created",
+        entity_type=EntityType.note,
+        entity_id=n.id,
+        payload={"on": n.entity_type.value, "entity_id": n.entity_id},
+        background=background,
+    )
     db.commit()
     db.refresh(n)
     return NoteOut.model_validate(n)
@@ -82,8 +86,15 @@ def patch_note(
         n.body = body["body"]
     if "data" in body:
         n.data = body["data"]
-    emit(db, p, event_type="note.updated", entity_type=EntityType.note,
-         entity_id=n.id, payload={}, background=background)
+    emit(
+        db,
+        p,
+        event_type="note.updated",
+        entity_type=EntityType.note,
+        entity_id=n.id,
+        payload={},
+        background=background,
+    )
     db.commit()
     db.refresh(n)
     return NoteOut.model_validate(n)
@@ -100,7 +111,14 @@ def delete_note(
     if not n or n.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
     db.delete(n)
-    emit(db, p, event_type="note.deleted", entity_type=EntityType.note,
-         entity_id=note_id, payload={}, background=background)
+    emit(
+        db,
+        p,
+        event_type="note.deleted",
+        entity_type=EntityType.note,
+        entity_id=note_id,
+        payload={},
+        background=background,
+    )
     db.commit()
     return OkResponse(message="deleted")

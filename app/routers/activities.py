@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from datetime import UTC
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select
@@ -21,9 +21,9 @@ def list_activities(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    kind: Optional[str] = None,
-    entity_type: Optional[EntityType] = None,
-    entity_id: Optional[str] = None,
+    kind: str | None = None,
+    entity_type: EntityType | None = None,
+    entity_id: str | None = None,
 ):
     query = select(Activity).where(Activity.workspace_id == p.workspace.id)
     if kind:
@@ -59,14 +59,21 @@ def create_activity(
 ) -> ActivityOut:
     body = payload.model_dump()
     if not body.get("occurred_at"):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        body["occurred_at"] = datetime.now(timezone.utc)
+        body["occurred_at"] = datetime.now(UTC)
     a = Activity(workspace_id=p.workspace.id, actor_user_id=p.user_id, **body)
     db.add(a)
     db.flush()
-    emit(db, p, event_type="activity.created", entity_type=EntityType.activity,
-         entity_id=a.id, payload={"kind": a.kind}, background=background)
+    emit(
+        db,
+        p,
+        event_type="activity.created",
+        entity_type=EntityType.activity,
+        entity_id=a.id,
+        payload={"kind": a.kind},
+        background=background,
+    )
     db.commit()
     db.refresh(a)
     return ActivityOut.model_validate(a)
@@ -91,7 +98,14 @@ def delete_activity(
     if not a or a.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
     db.delete(a)
-    emit(db, p, event_type="activity.deleted", entity_type=EntityType.activity,
-         entity_id=activity_id, payload={}, background=background)
+    emit(
+        db,
+        p,
+        event_type="activity.deleted",
+        entity_type=EntityType.activity,
+        entity_id=activity_id,
+        payload={},
+        background=background,
+    )
     db.commit()
     return OkResponse(message="deleted")

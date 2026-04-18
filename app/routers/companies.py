@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
@@ -22,9 +21,9 @@ def list_companies(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    q: Optional[str] = Query(None),
-    domain: Optional[str] = None,
-    tag: Optional[str] = None,
+    q: str | None = Query(None),
+    domain: str | None = None,
+    tag: str | None = None,
     include_deleted: bool = False,
 ):
     query = select(Company).where(Company.workspace_id == p.workspace.id)
@@ -32,9 +31,7 @@ def list_companies(
         query = query.where(Company.deleted_at.is_(None))
     if q:
         like = f"%{q.lower()}%"
-        query = query.where(
-            or_(func.lower(Company.name).like(like), func.lower(Company.domain).like(like))
-        )
+        query = query.where(or_(func.lower(Company.name).like(like), func.lower(Company.domain).like(like)))
     if domain:
         query = query.where(func.lower(Company.domain) == domain.lower())
     if tag:
@@ -71,8 +68,15 @@ def create_company(
     except Exception as e:  # noqa: BLE001
         db.rollback()
         raise HTTPException(status_code=409, detail=f"conflict: {e.__class__.__name__}")
-    emit(db, p, event_type="company.created", entity_type=EntityType.company,
-         entity_id=c.id, payload={"company_id": c.id}, background=background)
+    emit(
+        db,
+        p,
+        event_type="company.created",
+        entity_type=EntityType.company,
+        entity_id=c.id,
+        payload={"company_id": c.id},
+        background=background,
+    )
     db.commit()
     db.refresh(c)
     return CompanyOut.model_validate(c)
@@ -100,8 +104,15 @@ def patch_company(
     updates = payload.model_dump(exclude_unset=True)
     for k, v in updates.items():
         setattr(c, k, v)
-    emit(db, p, event_type="company.updated", entity_type=EntityType.company,
-         entity_id=c.id, payload={"changes": list(updates.keys())}, background=background)
+    emit(
+        db,
+        p,
+        event_type="company.updated",
+        entity_type=EntityType.company,
+        entity_id=c.id,
+        payload={"changes": list(updates.keys())},
+        background=background,
+    )
     db.commit()
     db.refresh(c)
     return CompanyOut.model_validate(c)
@@ -121,9 +132,16 @@ def delete_company(
     if hard:
         db.delete(c)
     else:
-        c.deleted_at = datetime.now(timezone.utc)
-    emit(db, p, event_type="company.deleted", entity_type=EntityType.company,
-         entity_id=c.id, payload={"hard": hard}, background=background)
+        c.deleted_at = datetime.now(UTC)
+    emit(
+        db,
+        p,
+        event_type="company.deleted",
+        entity_type=EntityType.company,
+        entity_id=c.id,
+        payload={"hard": hard},
+        background=background,
+    )
     db.commit()
     return {"ok": True}
 
@@ -158,15 +176,29 @@ def bulk_upsert(
                 setattr(existing, k, v)
             updated += 1
             ids.append(existing.id)
-            emit(db, p, event_type="company.updated", entity_type=EntityType.company,
-                 entity_id=existing.id, payload={"via": "bulk_upsert"}, background=background)
+            emit(
+                db,
+                p,
+                event_type="company.updated",
+                entity_type=EntityType.company,
+                entity_id=existing.id,
+                payload={"via": "bulk_upsert"},
+                background=background,
+            )
         else:
             c = Company(workspace_id=p.workspace.id, **item.model_dump())
             db.add(c)
             db.flush()
             created += 1
             ids.append(c.id)
-            emit(db, p, event_type="company.created", entity_type=EntityType.company,
-                 entity_id=c.id, payload={"via": "bulk_upsert"}, background=background)
+            emit(
+                db,
+                p,
+                event_type="company.created",
+                entity_type=EntityType.company,
+                entity_id=c.id,
+                payload={"via": "bulk_upsert"},
+                background=background,
+            )
     db.commit()
     return BulkUpsertResult(created=created, updated=updated, ids=ids)

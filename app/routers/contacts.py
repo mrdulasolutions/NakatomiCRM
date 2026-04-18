@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
@@ -29,10 +28,10 @@ def list_contacts(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    q: Optional[str] = Query(None, description="substring match on first/last name/email"),
-    email: Optional[str] = None,
-    company_id: Optional[str] = None,
-    tag: Optional[str] = None,
+    q: str | None = Query(None, description="substring match on first/last name/email"),
+    email: str | None = None,
+    company_id: str | None = None,
+    tag: str | None = None,
     include_deleted: bool = False,
 ):
     query = _base_query(db, p.workspace.id, include_deleted)
@@ -83,8 +82,15 @@ def create_contact(
     except Exception as e:  # noqa: BLE001
         db.rollback()
         raise HTTPException(status_code=409, detail=f"conflict: {e.__class__.__name__}")
-    emit(db, p, event_type="contact.created", entity_type=EntityType.contact,
-         entity_id=c.id, payload={"contact_id": c.id}, background=background)
+    emit(
+        db,
+        p,
+        event_type="contact.created",
+        entity_type=EntityType.contact,
+        entity_id=c.id,
+        payload={"contact_id": c.id},
+        background=background,
+    )
     db.commit()
     db.refresh(c)
     return ContactOut.model_validate(c)
@@ -112,8 +118,15 @@ def patch_contact(
     updates = payload.model_dump(exclude_unset=True)
     for k, v in updates.items():
         setattr(c, k, v)
-    emit(db, p, event_type="contact.updated", entity_type=EntityType.contact,
-         entity_id=c.id, payload={"changes": list(updates.keys())}, background=background)
+    emit(
+        db,
+        p,
+        event_type="contact.updated",
+        entity_type=EntityType.contact,
+        entity_id=c.id,
+        payload={"changes": list(updates.keys())},
+        background=background,
+    )
     db.commit()
     db.refresh(c)
     return ContactOut.model_validate(c)
@@ -133,9 +146,16 @@ def delete_contact(
     if hard:
         db.delete(c)
     else:
-        c.deleted_at = datetime.now(timezone.utc)
-    emit(db, p, event_type="contact.deleted", entity_type=EntityType.contact,
-         entity_id=c.id, payload={"hard": hard}, background=background)
+        c.deleted_at = datetime.now(UTC)
+    emit(
+        db,
+        p,
+        event_type="contact.deleted",
+        entity_type=EntityType.contact,
+        entity_id=c.id,
+        payload={"hard": hard},
+        background=background,
+    )
     db.commit()
     return {"ok": True}
 
@@ -170,15 +190,29 @@ def bulk_upsert(
                 setattr(existing, k, v)
             updated += 1
             ids.append(existing.id)
-            emit(db, p, event_type="contact.updated", entity_type=EntityType.contact,
-                 entity_id=existing.id, payload={"via": "bulk_upsert"}, background=background)
+            emit(
+                db,
+                p,
+                event_type="contact.updated",
+                entity_type=EntityType.contact,
+                entity_id=existing.id,
+                payload={"via": "bulk_upsert"},
+                background=background,
+            )
         else:
             c = Contact(workspace_id=p.workspace.id, **item.model_dump())
             db.add(c)
             db.flush()
             created += 1
             ids.append(c.id)
-            emit(db, p, event_type="contact.created", entity_type=EntityType.contact,
-                 entity_id=c.id, payload={"via": "bulk_upsert"}, background=background)
+            emit(
+                db,
+                p,
+                event_type="contact.created",
+                entity_type=EntityType.contact,
+                entity_id=c.id,
+                payload={"via": "bulk_upsert"},
+                background=background,
+            )
     db.commit()
     return BulkUpsertResult(created=created, updated=updated, ids=ids)

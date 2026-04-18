@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -21,9 +19,9 @@ def list_relationships(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    entity_type: Optional[EntityType] = Query(None, description="filter edges touching this entity"),
-    entity_id: Optional[str] = None,
-    relation_type: Optional[str] = None,
+    entity_type: EntityType | None = Query(None, description="filter edges touching this entity"),
+    entity_id: str | None = None,
+    relation_type: str | None = None,
     direction: str = Query("both", pattern=r"^(out|in|both)$"),
 ):
     query = select(Relationship).where(Relationship.workspace_id == p.workspace.id)
@@ -31,13 +29,9 @@ def list_relationships(
         query = query.where(Relationship.relation_type == relation_type)
     if entity_type and entity_id:
         if direction == "out":
-            query = query.where(
-                Relationship.source_type == entity_type, Relationship.source_id == entity_id
-            )
+            query = query.where(Relationship.source_type == entity_type, Relationship.source_id == entity_id)
         elif direction == "in":
-            query = query.where(
-                Relationship.target_type == entity_type, Relationship.target_id == entity_id
-            )
+            query = query.where(Relationship.target_type == entity_type, Relationship.target_id == entity_id)
         else:
             query = query.where(
                 or_(
@@ -75,12 +69,19 @@ def create_relationship(
     except Exception:
         db.rollback()
         raise HTTPException(status_code=409, detail="edge already exists")
-    emit(db, p, event_type="relationship.created", entity_type=payload.source_type,
-         entity_id=payload.source_id, payload={
-             "target_type": payload.target_type.value,
-             "target_id": payload.target_id,
-             "relation_type": payload.relation_type,
-         }, background=background)
+    emit(
+        db,
+        p,
+        event_type="relationship.created",
+        entity_type=payload.source_type,
+        entity_id=payload.source_id,
+        payload={
+            "target_type": payload.target_type.value,
+            "target_id": payload.target_id,
+            "relation_type": payload.relation_type,
+        },
+        background=background,
+    )
     db.commit()
     db.refresh(r)
     return RelationshipOut.model_validate(r)
@@ -98,8 +99,15 @@ def delete_relationship(
         raise HTTPException(status_code=404, detail="not found")
     src_type, src_id, rtype = r.source_type, r.source_id, r.relation_type
     db.delete(r)
-    emit(db, p, event_type="relationship.deleted", entity_type=src_type, entity_id=src_id,
-         payload={"relation_type": rtype}, background=background)
+    emit(
+        db,
+        p,
+        event_type="relationship.deleted",
+        entity_type=src_type,
+        entity_id=src_id,
+        payload={"relation_type": rtype},
+        background=background,
+    )
     db.commit()
     return OkResponse(message="deleted")
 
@@ -108,7 +116,7 @@ def delete_relationship(
 def neighbors(
     entity_type: EntityType,
     entity_id: str,
-    relation_type: Optional[str] = None,
+    relation_type: str | None = None,
     depth: int = Query(1, ge=1, le=2),
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
@@ -124,9 +132,7 @@ def neighbors(
         for et, eid in frontier:
             conds.append((Relationship.source_type == et) & (Relationship.source_id == eid))
             conds.append((Relationship.target_type == et) & (Relationship.target_id == eid))
-        q = select(Relationship).where(
-            Relationship.workspace_id == p.workspace.id, or_(*conds)
-        )
+        q = select(Relationship).where(Relationship.workspace_id == p.workspace.id, or_(*conds))
         if relation_type:
             q = q.where(Relationship.relation_type == relation_type)
         for edge in db.scalars(q).all():

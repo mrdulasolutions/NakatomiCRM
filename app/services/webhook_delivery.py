@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -39,7 +39,7 @@ async def _deliver_async(webhook_id: str, event_type: str, payload: dict) -> Non
         "User-Agent": "Nakatomi-Webhooks/1.0",
         "X-Nakatomi-Event": event_type,
         "X-Nakatomi-Signature": f"sha256={signature}",
-        "X-Nakatomi-Delivery-Timestamp": datetime.now(timezone.utc).isoformat(),
+        "X-Nakatomi-Delivery-Timestamp": datetime.now(UTC).isoformat(),
     }
 
     attempts = 0
@@ -62,7 +62,7 @@ async def _deliver_async(webhook_id: str, event_type: str, payload: dict) -> Non
             error = f"http {r.status_code}"
         except Exception as e:  # noqa: BLE001
             error = str(e)[:4000]
-        await asyncio.sleep(min(2 ** attempt, 30))
+        await asyncio.sleep(min(2**attempt, 30))
 
     with db_session() as db:
         db.add(
@@ -80,7 +80,7 @@ async def _deliver_async(webhook_id: str, event_type: str, payload: dict) -> Non
         )
         hook = db.get(Webhook, webhook_id)
         if hook:
-            hook.last_delivery_at = datetime.now(timezone.utc)
+            hook.last_delivery_at = datetime.now(UTC)
             if succeeded:
                 hook.failure_count = 0
                 hook.last_error = None

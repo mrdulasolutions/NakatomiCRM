@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -44,9 +43,9 @@ def workspace_timeline(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    event_type: Optional[str] = None,
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
+    event_type: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
 ):
     query = select(TimelineEvent).where(TimelineEvent.workspace_id == p.workspace.id)
     if event_type:

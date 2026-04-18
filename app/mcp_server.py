@@ -14,10 +14,9 @@ If you run into SDK version drift, the two moving pieces are:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import HTTPException
 from mcp.server.fastmcp import Context, FastMCP
 from sqlalchemy import func, or_, select
 
@@ -55,7 +54,7 @@ mcp = FastMCP("Nakatomi CRM")
 
 def _principal_from_ctx(ctx: Context) -> tuple[Principal, Any]:
     """Return (principal, db_session). Caller is responsible for closing the session."""
-    token: Optional[str] = None
+    token: str | None = None
     try:
         req = ctx.request_context.request  # type: ignore[attr-defined]
         auth = req.headers.get("authorization") if req else None
@@ -77,7 +76,9 @@ def _principal_from_ctx(ctx: Context) -> tuple[Principal, Any]:
     return Principal(user=user, api_key=key, workspace=ws, role=key.role), db
 
 
-def _record_event(db, principal: Principal, *, event_type: str, entity_type: EntityType, entity_id: str, payload: dict) -> None:
+def _record_event(
+    db, principal: Principal, *, event_type: str, entity_type: EntityType, entity_id: str, payload: dict
+) -> None:
     db.add(
         TimelineEvent(
             workspace_id=principal.workspace.id,
@@ -99,18 +100,16 @@ def _record_event(db, principal: Principal, *, event_type: str, entity_type: Ent
 @mcp.tool()
 def search_contacts(
     ctx: Context,
-    query: Optional[str] = None,
-    email: Optional[str] = None,
-    company_id: Optional[str] = None,
-    tag: Optional[str] = None,
+    query: str | None = None,
+    email: str | None = None,
+    company_id: str | None = None,
+    tag: str | None = None,
     limit: int = 25,
 ) -> list[dict]:
     """Search contacts by name/email substring, exact email, company, or tag."""
     p, db = _principal_from_ctx(ctx)
     try:
-        q = select(Contact).where(
-            Contact.workspace_id == p.workspace.id, Contact.deleted_at.is_(None)
-        )
+        q = select(Contact).where(Contact.workspace_id == p.workspace.id, Contact.deleted_at.is_(None))
         if query:
             like = f"%{query.lower()}%"
             q = q.where(
@@ -148,29 +147,41 @@ def get_contact(ctx: Context, contact_id: str) -> dict:
 @mcp.tool()
 def create_contact(
     ctx: Context,
-    first_name: Optional[str] = None,
-    last_name: Optional[str] = None,
-    email: Optional[str] = None,
-    phone: Optional[str] = None,
-    title: Optional[str] = None,
-    company_id: Optional[str] = None,
-    tags: Optional[list[str]] = None,
-    external_id: Optional[str] = None,
-    data: Optional[dict] = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    title: str | None = None,
+    company_id: str | None = None,
+    tags: list[str] | None = None,
+    external_id: str | None = None,
+    data: dict | None = None,
 ) -> dict:
     """Create a new contact."""
     p, db = _principal_from_ctx(ctx)
     try:
         c = Contact(
             workspace_id=p.workspace.id,
-            first_name=first_name, last_name=last_name, email=email, phone=phone,
-            title=title, company_id=company_id, tags=tags or [], data=data or {},
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=phone,
+            title=title,
+            company_id=company_id,
+            tags=tags or [],
+            data=data or {},
             external_id=external_id,
         )
         db.add(c)
         db.flush()
-        _record_event(db, p, event_type="contact.created", entity_type=EntityType.contact,
-                      entity_id=c.id, payload={"via": "mcp"})
+        _record_event(
+            db,
+            p,
+            event_type="contact.created",
+            entity_type=EntityType.contact,
+            entity_id=c.id,
+            payload={"via": "mcp"},
+        )
         db.commit()
         db.refresh(c)
         return _serialize(c)
@@ -189,8 +200,14 @@ def update_contact(ctx: Context, contact_id: str, updates: dict) -> dict:
         for k, v in updates.items():
             if hasattr(c, k):
                 setattr(c, k, v)
-        _record_event(db, p, event_type="contact.updated", entity_type=EntityType.contact,
-                      entity_id=c.id, payload={"changes": list(updates.keys())})
+        _record_event(
+            db,
+            p,
+            event_type="contact.updated",
+            entity_type=EntityType.contact,
+            entity_id=c.id,
+            payload={"changes": list(updates.keys())},
+        )
         db.commit()
         db.refresh(c)
         return _serialize(c)
@@ -206,16 +223,14 @@ def update_contact(ctx: Context, contact_id: str, updates: dict) -> dict:
 @mcp.tool()
 def search_companies(
     ctx: Context,
-    query: Optional[str] = None,
-    domain: Optional[str] = None,
-    tag: Optional[str] = None,
+    query: str | None = None,
+    domain: str | None = None,
+    tag: str | None = None,
     limit: int = 25,
 ) -> list[dict]:
     p, db = _principal_from_ctx(ctx)
     try:
-        q = select(Company).where(
-            Company.workspace_id == p.workspace.id, Company.deleted_at.is_(None)
-        )
+        q = select(Company).where(Company.workspace_id == p.workspace.id, Company.deleted_at.is_(None))
         if query:
             like = f"%{query.lower()}%"
             q = q.where(or_(func.lower(Company.name).like(like), func.lower(Company.domain).like(like)))
@@ -233,27 +248,41 @@ def search_companies(
 def create_company(
     ctx: Context,
     name: str,
-    domain: Optional[str] = None,
-    website: Optional[str] = None,
-    industry: Optional[str] = None,
-    employee_count: Optional[int] = None,
-    annual_revenue: Optional[float] = None,
-    description: Optional[str] = None,
-    tags: Optional[list[str]] = None,
-    external_id: Optional[str] = None,
-    data: Optional[dict] = None,
+    domain: str | None = None,
+    website: str | None = None,
+    industry: str | None = None,
+    employee_count: int | None = None,
+    annual_revenue: float | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+    external_id: str | None = None,
+    data: dict | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         c = Company(
-            workspace_id=p.workspace.id, name=name, domain=domain, website=website,
-            industry=industry, employee_count=employee_count, annual_revenue=annual_revenue,
-            description=description, tags=tags or [], data=data or {}, external_id=external_id,
+            workspace_id=p.workspace.id,
+            name=name,
+            domain=domain,
+            website=website,
+            industry=industry,
+            employee_count=employee_count,
+            annual_revenue=annual_revenue,
+            description=description,
+            tags=tags or [],
+            data=data or {},
+            external_id=external_id,
         )
         db.add(c)
         db.flush()
-        _record_event(db, p, event_type="company.created", entity_type=EntityType.company,
-                      entity_id=c.id, payload={"via": "mcp"})
+        _record_event(
+            db,
+            p,
+            event_type="company.created",
+            entity_type=EntityType.company,
+            entity_id=c.id,
+            payload={"via": "mcp"},
+        )
         db.commit()
         db.refresh(c)
         return _serialize(c)
@@ -273,14 +302,26 @@ def list_pipelines(ctx: Context) -> list[dict]:
         rows = db.scalars(select(Pipeline).where(Pipeline.workspace_id == p.workspace.id)).all()
         out = []
         for pipe in rows:
-            out.append({
-                "id": pipe.id, "name": pipe.name, "slug": pipe.slug, "is_default": pipe.is_default,
-                "stages": [
-                    {"id": s.id, "name": s.name, "slug": s.slug, "position": s.position,
-                     "probability": float(s.probability), "is_won": s.is_won, "is_lost": s.is_lost}
-                    for s in pipe.stages
-                ],
-            })
+            out.append(
+                {
+                    "id": pipe.id,
+                    "name": pipe.name,
+                    "slug": pipe.slug,
+                    "is_default": pipe.is_default,
+                    "stages": [
+                        {
+                            "id": s.id,
+                            "name": s.name,
+                            "slug": s.slug,
+                            "position": s.position,
+                            "probability": float(s.probability),
+                            "is_won": s.is_won,
+                            "is_lost": s.is_lost,
+                        }
+                        for s in pipe.stages
+                    ],
+                }
+            )
         return out
     finally:
         db.close()
@@ -290,45 +331,59 @@ def list_pipelines(ctx: Context) -> list[dict]:
 def create_deal(
     ctx: Context,
     name: str,
-    amount: Optional[float] = None,
+    amount: float | None = None,
     currency: str = "USD",
-    pipeline_id: Optional[str] = None,
-    stage_id: Optional[str] = None,
-    primary_contact_id: Optional[str] = None,
-    company_id: Optional[str] = None,
-    expected_close_date: Optional[datetime] = None,
-    tags: Optional[list[str]] = None,
-    data: Optional[dict] = None,
+    pipeline_id: str | None = None,
+    stage_id: str | None = None,
+    primary_contact_id: str | None = None,
+    company_id: str | None = None,
+    expected_close_date: datetime | None = None,
+    tags: list[str] | None = None,
+    data: dict | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         if not pipeline_id:
             pipe = db.scalar(
-                select(Pipeline).where(Pipeline.workspace_id == p.workspace.id)
-                .order_by(Pipeline.is_default.desc(), Pipeline.created_at.asc()).limit(1)
+                select(Pipeline)
+                .where(Pipeline.workspace_id == p.workspace.id)
+                .order_by(Pipeline.is_default.desc(), Pipeline.created_at.asc())
+                .limit(1)
             )
             if not pipe:
                 raise RuntimeError("no pipelines; create one via the REST API first")
             pipeline_id = pipe.id
         if not stage_id:
             st = db.scalar(
-                select(Stage).where(Stage.pipeline_id == pipeline_id)
-                .order_by(Stage.position).limit(1)
+                select(Stage).where(Stage.pipeline_id == pipeline_id).order_by(Stage.position).limit(1)
             )
             if not st:
                 raise RuntimeError("pipeline has no stages")
             stage_id = st.id
 
         d = Deal(
-            workspace_id=p.workspace.id, name=name, amount=amount, currency=currency,
-            pipeline_id=pipeline_id, stage_id=stage_id,
-            primary_contact_id=primary_contact_id, company_id=company_id,
-            expected_close_date=expected_close_date, tags=tags or [], data=data or {},
+            workspace_id=p.workspace.id,
+            name=name,
+            amount=amount,
+            currency=currency,
+            pipeline_id=pipeline_id,
+            stage_id=stage_id,
+            primary_contact_id=primary_contact_id,
+            company_id=company_id,
+            expected_close_date=expected_close_date,
+            tags=tags or [],
+            data=data or {},
         )
         db.add(d)
         db.flush()
-        _record_event(db, p, event_type="deal.created", entity_type=EntityType.deal,
-                      entity_id=d.id, payload={"via": "mcp"})
+        _record_event(
+            db,
+            p,
+            event_type="deal.created",
+            entity_type=EntityType.deal,
+            entity_id=d.id,
+            payload={"via": "mcp"},
+        )
         db.commit()
         db.refresh(d)
         return _serialize(d)
@@ -353,12 +408,18 @@ def move_deal_stage(ctx: Context, deal_id: str, stage_slug: str) -> dict:
         d.stage_id = new_stage.id
         if new_stage.is_won:
             d.status = DealStatus.won
-            d.closed_at = datetime.now(timezone.utc)
+            d.closed_at = datetime.now(UTC)
         elif new_stage.is_lost:
             d.status = DealStatus.lost
-            d.closed_at = datetime.now(timezone.utc)
-        _record_event(db, p, event_type="deal.stage_changed", entity_type=EntityType.deal,
-                      entity_id=d.id, payload={"from_stage_id": old, "to_stage_id": new_stage.id})
+            d.closed_at = datetime.now(UTC)
+        _record_event(
+            db,
+            p,
+            event_type="deal.stage_changed",
+            entity_type=EntityType.deal,
+            entity_id=d.id,
+            payload={"from_stage_id": old, "to_stage_id": new_stage.id},
+        )
         db.commit()
         db.refresh(d)
         return _serialize(d)
@@ -375,26 +436,37 @@ def move_deal_stage(ctx: Context, deal_id: str, stage_slug: str) -> dict:
 def log_activity(
     ctx: Context,
     kind: str,
-    subject: Optional[str] = None,
-    body: Optional[str] = None,
-    entity_type: Optional[str] = None,
-    entity_id: Optional[str] = None,
-    occurred_at: Optional[datetime] = None,
-    data: Optional[dict] = None,
+    subject: str | None = None,
+    body: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    occurred_at: datetime | None = None,
+    data: dict | None = None,
 ) -> dict:
     """Log a call, meeting, email, or other touchpoint against a contact/company/deal."""
     p, db = _principal_from_ctx(ctx)
     try:
         a = Activity(
-            workspace_id=p.workspace.id, actor_user_id=p.user_id,
-            kind=kind, subject=subject, body=body,
-            entity_type=EntityType(entity_type) if entity_type else None, entity_id=entity_id,
-            occurred_at=occurred_at or datetime.now(timezone.utc), data=data or {},
+            workspace_id=p.workspace.id,
+            actor_user_id=p.user_id,
+            kind=kind,
+            subject=subject,
+            body=body,
+            entity_type=EntityType(entity_type) if entity_type else None,
+            entity_id=entity_id,
+            occurred_at=occurred_at or datetime.now(UTC),
+            data=data or {},
         )
         db.add(a)
         db.flush()
-        _record_event(db, p, event_type="activity.created", entity_type=EntityType.activity,
-                      entity_id=a.id, payload={"kind": kind})
+        _record_event(
+            db,
+            p,
+            event_type="activity.created",
+            entity_type=EntityType.activity,
+            entity_id=a.id,
+            payload={"kind": kind},
+        )
         db.commit()
         db.refresh(a)
         return _serialize(a)
@@ -403,18 +475,28 @@ def log_activity(
 
 
 @mcp.tool()
-def add_note(ctx: Context, entity_type: str, entity_id: str, body: str, data: Optional[dict] = None) -> dict:
+def add_note(ctx: Context, entity_type: str, entity_id: str, body: str, data: dict | None = None) -> dict:
     """Attach a markdown note to a CRM entity."""
     p, db = _principal_from_ctx(ctx)
     try:
         n = Note(
-            workspace_id=p.workspace.id, author_user_id=p.user_id,
-            entity_type=EntityType(entity_type), entity_id=entity_id, body=body, data=data or {},
+            workspace_id=p.workspace.id,
+            author_user_id=p.user_id,
+            entity_type=EntityType(entity_type),
+            entity_id=entity_id,
+            body=body,
+            data=data or {},
         )
         db.add(n)
         db.flush()
-        _record_event(db, p, event_type="note.created", entity_type=EntityType.note,
-                      entity_id=n.id, payload={"on": entity_type, "entity_id": entity_id})
+        _record_event(
+            db,
+            p,
+            event_type="note.created",
+            entity_type=EntityType.note,
+            entity_id=n.id,
+            payload={"on": entity_type, "entity_id": entity_id},
+        )
         db.commit()
         db.refresh(n)
         return _serialize(n)
@@ -426,25 +508,35 @@ def add_note(ctx: Context, entity_type: str, entity_id: str, body: str, data: Op
 def create_task(
     ctx: Context,
     title: str,
-    description: Optional[str] = None,
-    due_at: Optional[datetime] = None,
-    assignee_user_id: Optional[str] = None,
-    entity_type: Optional[str] = None,
-    entity_id: Optional[str] = None,
-    data: Optional[dict] = None,
+    description: str | None = None,
+    due_at: datetime | None = None,
+    assignee_user_id: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    data: dict | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         t = Task(
-            workspace_id=p.workspace.id, title=title, description=description, due_at=due_at,
+            workspace_id=p.workspace.id,
+            title=title,
+            description=description,
+            due_at=due_at,
             assignee_user_id=assignee_user_id,
-            entity_type=EntityType(entity_type) if entity_type else None, entity_id=entity_id,
+            entity_type=EntityType(entity_type) if entity_type else None,
+            entity_id=entity_id,
             data=data or {},
         )
         db.add(t)
         db.flush()
-        _record_event(db, p, event_type="task.created", entity_type=EntityType.task,
-                      entity_id=t.id, payload={"title": title})
+        _record_event(
+            db,
+            p,
+            event_type="task.created",
+            entity_type=EntityType.task,
+            entity_id=t.id,
+            payload={"title": title},
+        )
         db.commit()
         db.refresh(t)
         return _serialize(t)
@@ -455,8 +547,8 @@ def create_task(
 @mcp.tool()
 def list_tasks(
     ctx: Context,
-    status: Optional[str] = None,
-    assignee_user_id: Optional[str] = None,
+    status: str | None = None,
+    assignee_user_id: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
     p, db = _principal_from_ctx(ctx)
@@ -486,16 +578,20 @@ def relate(
     target_id: str,
     relation_type: str,
     strength: float = 1.0,
-    data: Optional[dict] = None,
+    data: dict | None = None,
 ) -> dict:
     """Create a typed edge between two entities in the relationship graph."""
     p, db = _principal_from_ctx(ctx)
     try:
         r = Relationship(
             workspace_id=p.workspace.id,
-            source_type=EntityType(source_type), source_id=source_id,
-            target_type=EntityType(target_type), target_id=target_id,
-            relation_type=relation_type, strength=strength, data=data or {},
+            source_type=EntityType(source_type),
+            source_id=source_id,
+            target_type=EntityType(target_type),
+            target_id=target_id,
+            relation_type=relation_type,
+            strength=strength,
+            data=data or {},
         )
         db.add(r)
         try:
@@ -503,11 +599,18 @@ def relate(
         except Exception:
             db.rollback()
             raise RuntimeError("edge already exists")
-        _record_event(db, p, event_type="relationship.created", entity_type=EntityType(source_type),
-                      entity_id=source_id, payload={
-                          "target_type": target_type, "target_id": target_id,
-                          "relation_type": relation_type,
-                      })
+        _record_event(
+            db,
+            p,
+            event_type="relationship.created",
+            entity_type=EntityType(source_type),
+            entity_id=source_id,
+            payload={
+                "target_type": target_type,
+                "target_id": target_id,
+                "relation_type": relation_type,
+            },
+        )
         db.commit()
         db.refresh(r)
         return _serialize(r)
@@ -532,8 +635,11 @@ def timeline(ctx: Context, entity_type: str, entity_id: str, limit: int = 50) ->
         ).all()
         return [
             {
-                "id": r.id, "event_type": r.event_type, "occurred_at": r.occurred_at.isoformat(),
-                "actor_user_id": r.actor_user_id, "actor_api_key_id": r.actor_api_key_id,
+                "id": r.id,
+                "event_type": r.event_type,
+                "occurred_at": r.occurred_at.isoformat(),
+                "actor_user_id": r.actor_user_id,
+                "actor_api_key_id": r.actor_api_key_id,
                 "payload": r.payload,
             }
             for r in rows
@@ -545,8 +651,8 @@ def timeline(ctx: Context, entity_type: str, entity_id: str, limit: int = 50) ->
 @mcp.tool()
 def describe_schema(ctx: Context) -> dict:
     """Return a summary of entities, fields, and event types so the agent can introspect."""
-    from app.routers.schema import _ENTITIES, _EVENT_TYPES  # local import to avoid cycles
     from app import __version__
+    from app.routers.schema import _ENTITIES, _EVENT_TYPES  # local import to avoid cycles
 
     return {
         "version": __version__,

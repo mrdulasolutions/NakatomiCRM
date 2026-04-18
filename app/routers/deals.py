@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -17,7 +16,7 @@ from app.services.pagination import apply_cursor, encode_cursor
 router = APIRouter(prefix="/deals", tags=["deals"])
 
 
-def _default_pipeline(db: Session, workspace_id: str) -> Optional[Pipeline]:
+def _default_pipeline(db: Session, workspace_id: str) -> Pipeline | None:
     return db.scalar(
         select(Pipeline)
         .where(Pipeline.workspace_id == workspace_id)
@@ -31,12 +30,12 @@ def list_deals(
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
-    q: Optional[str] = Query(None),
-    status: Optional[DealStatus] = None,
-    pipeline_id: Optional[str] = None,
-    stage_id: Optional[str] = None,
-    company_id: Optional[str] = None,
-    owner_user_id: Optional[str] = None,
+    q: str | None = Query(None),
+    status: DealStatus | None = None,
+    pipeline_id: str | None = None,
+    stage_id: str | None = None,
+    company_id: str | None = None,
+    owner_user_id: str | None = None,
     include_deleted: bool = False,
 ):
     query = select(Deal).where(Deal.workspace_id == p.workspace.id)
@@ -108,8 +107,15 @@ def create_deal(
     except Exception as e:  # noqa: BLE001
         db.rollback()
         raise HTTPException(status_code=409, detail=f"conflict: {e.__class__.__name__}")
-    emit(db, p, event_type="deal.created", entity_type=EntityType.deal,
-         entity_id=d.id, payload={"deal_id": d.id, "stage_id": stage_id}, background=background)
+    emit(
+        db,
+        p,
+        event_type="deal.created",
+        entity_type=EntityType.deal,
+        entity_id=d.id,
+        payload={"deal_id": d.id, "stage_id": stage_id},
+        background=background,
+    )
     db.commit()
     db.refresh(d)
     return DealOut.model_validate(d)
@@ -140,19 +146,38 @@ def patch_deal(
     for k, v in updates.items():
         setattr(d, k, v)
     if "status" in updates and updates["status"] in (DealStatus.won, DealStatus.lost):
-        d.closed_at = datetime.now(timezone.utc)
-    emit(db, p, event_type="deal.updated", entity_type=EntityType.deal,
-         entity_id=d.id, payload={"changes": list(updates.keys())}, background=background)
+        d.closed_at = datetime.now(UTC)
+    emit(
+        db,
+        p,
+        event_type="deal.updated",
+        entity_type=EntityType.deal,
+        entity_id=d.id,
+        payload={"changes": list(updates.keys())},
+        background=background,
+    )
     if "stage_id" in updates and updates["stage_id"] != old_stage:
-        emit(db, p, event_type="deal.stage_changed", entity_type=EntityType.deal,
-             entity_id=d.id, payload={"from_stage_id": old_stage, "to_stage_id": d.stage_id},
-             background=background)
+        emit(
+            db,
+            p,
+            event_type="deal.stage_changed",
+            entity_type=EntityType.deal,
+            entity_id=d.id,
+            payload={"from_stage_id": old_stage, "to_stage_id": d.stage_id},
+            background=background,
+        )
     if "status" in updates and updates["status"] != old_status:
         new_status = updates["status"]
         status_name = new_status.value if hasattr(new_status, "value") else str(new_status)
-        emit(db, p, event_type=f"deal.{status_name}", entity_type=EntityType.deal,
-             entity_id=d.id, payload={"amount": float(d.amount) if d.amount else None},
-             background=background)
+        emit(
+            db,
+            p,
+            event_type=f"deal.{status_name}",
+            entity_type=EntityType.deal,
+            entity_id=d.id,
+            payload={"amount": float(d.amount) if d.amount else None},
+            background=background,
+        )
     db.commit()
     db.refresh(d)
     return DealOut.model_validate(d)
@@ -172,8 +197,15 @@ def delete_deal(
     if hard:
         db.delete(d)
     else:
-        d.deleted_at = datetime.now(timezone.utc)
-    emit(db, p, event_type="deal.deleted", entity_type=EntityType.deal,
-         entity_id=d.id, payload={"hard": hard}, background=background)
+        d.deleted_at = datetime.now(UTC)
+    emit(
+        db,
+        p,
+        event_type="deal.deleted",
+        entity_type=EntityType.deal,
+        entity_id=d.id,
+        payload={"hard": hard},
+        background=background,
+    )
     db.commit()
     return OkResponse(message="deleted")

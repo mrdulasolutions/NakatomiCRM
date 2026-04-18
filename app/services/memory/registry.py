@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Optional
 
 from app.config import settings
 from app.services.memory.base import MemoryConnector
@@ -44,5 +43,5 @@ def enabled_connectors() -> dict[str, MemoryConnector]:
     return out
 
 
-def get_connector(name: str) -> Optional[MemoryConnector]:
+def get_connector(name: str) -> MemoryConnector | None:
     return enabled_connectors().get(name.lower())

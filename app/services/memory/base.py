@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -38,7 +38,7 @@ class MemoryConnector(ABC):
         crm_entity_id: str,
         text: str,
         metadata: dict,
-    ) -> Optional[MemoryWriteResult]:
+    ) -> MemoryWriteResult | None:
         """Mirror a CRM event to the external memory. Return a write result, or None
         if the adapter chose to skip this event type."""
 
@@ -48,8 +48,8 @@ class MemoryConnector(ABC):
         *,
         workspace_id: str,
         query: str,
-        crm_entity_type: Optional[str] = None,
-        crm_entity_id: Optional[str] = None,
+        crm_entity_type: str | None = None,
+        crm_entity_id: str | None = None,
         limit: int = 10,
     ) -> list[MemoryItem]:
         """Return the top-N memories relevant to the query (+ optional CRM anchor)."""

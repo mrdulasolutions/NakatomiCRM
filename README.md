@@ -16,7 +16,7 @@
 ## Quickstart (Docker)
 
 ```bash
-git clone https://github.com/your-org/nakatomi.git
+git clone https://github.com/mrdulasolutions/NakatomiCRM.git
 cd nakatomi
 cp .env.example .env            # fill SECRET_KEY
 docker compose up -d            # Postgres + app on :8000

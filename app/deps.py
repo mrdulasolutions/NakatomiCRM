@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
@@ -15,8 +14,8 @@ from app.db import get_db
 from app.models import (
     ApiKey,
     IdempotencyKey,
-    Membership,
     MemberRole,
+    Membership,
     User,
     Workspace,
 )
@@ -27,17 +26,17 @@ from app.security import decode_access_token, hash_api_key
 class Principal:
     """Who is making the request."""
 
-    user: Optional[User]
-    api_key: Optional[ApiKey]
+    user: User | None
+    api_key: ApiKey | None
     workspace: Workspace
     role: MemberRole
 
     @property
-    def user_id(self) -> Optional[str]:
+    def user_id(self) -> str | None:
         return self.user.id if self.user else None
 
     @property
-    def api_key_id(self) -> Optional[str]:
+    def api_key_id(self) -> str | None:
         return self.api_key.id if self.api_key else None
 
 
@@ -49,7 +48,7 @@ def _forbidden(msg: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=msg)
 
 
-def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
+def _extract_bearer(authorization: str | None) -> str | None:
     if not authorization:
         return None
     parts = authorization.split()
@@ -61,8 +60,8 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
 def get_principal(
     request: Request,
     db: Session = Depends(get_db),
-    authorization: Optional[str] = Header(default=None),
-    x_workspace: Optional[str] = Header(default=None, alias="X-Workspace"),
+    authorization: str | None = Header(default=None),
+    x_workspace: str | None = Header(default=None, alias="X-Workspace"),
 ) -> Principal:
     """Resolve the caller into a Principal.
 
@@ -100,9 +99,7 @@ def get_principal(
     )
     if not ws:
         raise _auth_error("workspace not found")
-    mem = db.scalar(
-        select(Membership).where(Membership.workspace_id == ws.id, Membership.user_id == user.id)
-    )
+    mem = db.scalar(select(Membership).where(Membership.workspace_id == ws.id, Membership.user_id == user.id))
     if not mem:
         raise _forbidden("not a member of this workspace")
     return Principal(user=user, api_key=None, workspace=ws, role=mem.role)
@@ -121,12 +118,12 @@ def require_role(*allowed: MemberRole):
 @dataclass
 class Pagination:
     limit: int
-    cursor: Optional[str]  # base64 of (created_at_iso, id)
+    cursor: str | None  # base64 of (created_at_iso, id)
 
 
 def get_pagination(
     limit: int = 50,
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
 ) -> Pagination:
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit must be 1..500")
@@ -146,7 +143,7 @@ def request_fingerprint(method: str, path: str, body: bytes) -> str:
 
 def check_idempotency(
     db: Session, workspace_id: str, key: str, method: str, path: str, body_bytes: bytes
-) -> Optional[IdempotencyKey]:
+) -> IdempotencyKey | None:
     """Return stored record if key was already used — caller should replay its response."""
     fp = request_fingerprint(method, path, body_bytes)
     existing = db.scalar(

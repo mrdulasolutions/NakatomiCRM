@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -18,7 +18,7 @@ class ORMBase(BaseModel):
 
 class Page(BaseModel, Generic[T]):
     items: list[T]
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
     count: int
 
 
@@ -26,7 +26,7 @@ class Page(BaseModel, Generic[T]):
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
-    display_name: Optional[str] = None
+    display_name: str | None = None
     workspace_name: str
     workspace_slug: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]*$")
 
@@ -48,7 +48,7 @@ class TokenResponse(BaseModel):
 class UserOut(ORMBase):
     id: str
     email: str
-    display_name: Optional[str]
+    display_name: str | None
     is_active: bool
 
 
@@ -62,8 +62,8 @@ class WorkspaceOut(ORMBase):
 
 
 class WorkspaceUpdate(BaseModel):
-    name: Optional[str] = None
-    data: Optional[dict] = None
+    name: str | None = None
+    data: dict | None = None
 
 
 class InviteRequest(BaseModel):
@@ -81,8 +81,8 @@ class MembershipOut(ORMBase):
 class ApiKeyCreate(BaseModel):
     name: str
     role: MemberRole = MemberRole.member
-    expires_at: Optional[datetime] = None
-    user_id: Optional[str] = None
+    expires_at: datetime | None = None
+    user_id: str | None = None
 
 
 class ApiKeyOut(ORMBase):
@@ -90,9 +90,9 @@ class ApiKeyOut(ORMBase):
     name: str
     prefix: str
     role: MemberRole
-    last_used_at: Optional[datetime]
-    expires_at: Optional[datetime]
-    revoked_at: Optional[datetime]
+    last_used_at: datetime | None
+    expires_at: datetime | None
+    revoked_at: datetime | None
     created_at: datetime
 
 
@@ -102,38 +102,38 @@ class ApiKeyCreatedOut(ApiKeyOut):
 
 # ---------- Contact ----------
 class ContactIn(BaseModel):
-    external_id: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    title: Optional[str] = None
-    company_id: Optional[str] = None
+    external_id: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+    title: str | None = None
+    company_id: str | None = None
     tags: list[str] = []
     data: dict = {}
 
 
 class ContactPatch(BaseModel):
-    external_id: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    title: Optional[str] = None
-    company_id: Optional[str] = None
-    tags: Optional[list[str]] = None
-    data: Optional[dict] = None
+    external_id: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+    title: str | None = None
+    company_id: str | None = None
+    tags: list[str] | None = None
+    data: dict | None = None
 
 
 class ContactOut(ORMBase):
     id: str
-    external_id: Optional[str]
-    first_name: Optional[str]
-    last_name: Optional[str]
-    email: Optional[str]
-    phone: Optional[str]
-    title: Optional[str]
-    company_id: Optional[str]
+    external_id: str | None
+    first_name: str | None
+    last_name: str | None
+    email: str | None
+    phone: str | None
+    title: str | None
+    company_id: str | None
     tags: list[str]
     data: dict
     created_at: datetime
@@ -142,41 +142,41 @@ class ContactOut(ORMBase):
 
 # ---------- Company ----------
 class CompanyIn(BaseModel):
-    external_id: Optional[str] = None
+    external_id: str | None = None
     name: str
-    domain: Optional[str] = None
-    website: Optional[str] = None
-    industry: Optional[str] = None
-    employee_count: Optional[int] = None
-    annual_revenue: Optional[float] = None
-    description: Optional[str] = None
+    domain: str | None = None
+    website: str | None = None
+    industry: str | None = None
+    employee_count: int | None = None
+    annual_revenue: float | None = None
+    description: str | None = None
     tags: list[str] = []
     data: dict = {}
 
 
 class CompanyPatch(BaseModel):
-    external_id: Optional[str] = None
-    name: Optional[str] = None
-    domain: Optional[str] = None
-    website: Optional[str] = None
-    industry: Optional[str] = None
-    employee_count: Optional[int] = None
-    annual_revenue: Optional[float] = None
-    description: Optional[str] = None
-    tags: Optional[list[str]] = None
-    data: Optional[dict] = None
+    external_id: str | None = None
+    name: str | None = None
+    domain: str | None = None
+    website: str | None = None
+    industry: str | None = None
+    employee_count: int | None = None
+    annual_revenue: float | None = None
+    description: str | None = None
+    tags: list[str] | None = None
+    data: dict | None = None
 
 
 class CompanyOut(ORMBase):
     id: str
-    external_id: Optional[str]
+    external_id: str | None
     name: str
-    domain: Optional[str]
-    website: Optional[str]
-    industry: Optional[str]
-    employee_count: Optional[int]
-    annual_revenue: Optional[float]
-    description: Optional[str]
+    domain: str | None
+    website: str | None
+    industry: str | None
+    employee_count: int | None
+    annual_revenue: float | None
+    description: str | None
     tags: list[str]
     data: dict
     created_at: datetime
@@ -223,50 +223,50 @@ class PipelineOut(ORMBase):
 
 # ---------- Deal ----------
 class DealIn(BaseModel):
-    external_id: Optional[str] = None
+    external_id: str | None = None
     name: str
-    pipeline_id: Optional[str] = None
-    stage_id: Optional[str] = None
+    pipeline_id: str | None = None
+    stage_id: str | None = None
     status: DealStatus = DealStatus.open
-    amount: Optional[float] = None
+    amount: float | None = None
     currency: str = "USD"
-    expected_close_date: Optional[datetime] = None
-    primary_contact_id: Optional[str] = None
-    company_id: Optional[str] = None
-    owner_user_id: Optional[str] = None
+    expected_close_date: datetime | None = None
+    primary_contact_id: str | None = None
+    company_id: str | None = None
+    owner_user_id: str | None = None
     tags: list[str] = []
     data: dict = {}
 
 
 class DealPatch(BaseModel):
-    external_id: Optional[str] = None
-    name: Optional[str] = None
-    stage_id: Optional[str] = None
-    status: Optional[DealStatus] = None
-    amount: Optional[float] = None
-    currency: Optional[str] = None
-    expected_close_date: Optional[datetime] = None
-    primary_contact_id: Optional[str] = None
-    company_id: Optional[str] = None
-    owner_user_id: Optional[str] = None
-    tags: Optional[list[str]] = None
-    data: Optional[dict] = None
+    external_id: str | None = None
+    name: str | None = None
+    stage_id: str | None = None
+    status: DealStatus | None = None
+    amount: float | None = None
+    currency: str | None = None
+    expected_close_date: datetime | None = None
+    primary_contact_id: str | None = None
+    company_id: str | None = None
+    owner_user_id: str | None = None
+    tags: list[str] | None = None
+    data: dict | None = None
 
 
 class DealOut(ORMBase):
     id: str
-    external_id: Optional[str]
+    external_id: str | None
     name: str
     pipeline_id: str
     stage_id: str
     status: DealStatus
-    amount: Optional[float]
+    amount: float | None
     currency: str
-    expected_close_date: Optional[datetime]
-    closed_at: Optional[datetime]
-    primary_contact_id: Optional[str]
-    company_id: Optional[str]
-    owner_user_id: Optional[str]
+    expected_close_date: datetime | None
+    closed_at: datetime | None
+    primary_contact_id: str | None
+    company_id: str | None
+    owner_user_id: str | None
     tags: list[str]
     data: dict
     created_at: datetime
@@ -275,26 +275,26 @@ class DealOut(ORMBase):
 
 # ---------- Activity / Note / Task ----------
 class ActivityIn(BaseModel):
-    external_id: Optional[str] = None
+    external_id: str | None = None
     kind: str
-    subject: Optional[str] = None
-    body: Optional[str] = None
-    occurred_at: Optional[datetime] = None
-    entity_type: Optional[EntityType] = None
-    entity_id: Optional[str] = None
+    subject: str | None = None
+    body: str | None = None
+    occurred_at: datetime | None = None
+    entity_type: EntityType | None = None
+    entity_id: str | None = None
     data: dict = {}
 
 
 class ActivityOut(ORMBase):
     id: str
-    external_id: Optional[str]
+    external_id: str | None
     kind: str
-    subject: Optional[str]
-    body: Optional[str]
+    subject: str | None
+    body: str | None
     occurred_at: datetime
-    entity_type: Optional[EntityType]
-    entity_id: Optional[str]
-    actor_user_id: Optional[str]
+    entity_type: EntityType | None
+    entity_id: str | None
+    actor_user_id: str | None
     data: dict
     created_at: datetime
 
@@ -311,44 +311,44 @@ class NoteOut(ORMBase):
     entity_type: EntityType
     entity_id: str
     body: str
-    author_user_id: Optional[str]
+    author_user_id: str | None
     data: dict
     created_at: datetime
     updated_at: datetime
 
 
 class TaskIn(BaseModel):
-    external_id: Optional[str] = None
+    external_id: str | None = None
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     status: TaskStatus = TaskStatus.open
-    due_at: Optional[datetime] = None
-    entity_type: Optional[EntityType] = None
-    entity_id: Optional[str] = None
-    assignee_user_id: Optional[str] = None
+    due_at: datetime | None = None
+    entity_type: EntityType | None = None
+    entity_id: str | None = None
+    assignee_user_id: str | None = None
     data: dict = {}
 
 
 class TaskPatch(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[TaskStatus] = None
-    due_at: Optional[datetime] = None
-    assignee_user_id: Optional[str] = None
-    data: Optional[dict] = None
+    title: str | None = None
+    description: str | None = None
+    status: TaskStatus | None = None
+    due_at: datetime | None = None
+    assignee_user_id: str | None = None
+    data: dict | None = None
 
 
 class TaskOut(ORMBase):
     id: str
-    external_id: Optional[str]
+    external_id: str | None
     title: str
-    description: Optional[str]
+    description: str | None
     status: TaskStatus
-    due_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    entity_type: Optional[EntityType]
-    entity_id: Optional[str]
-    assignee_user_id: Optional[str]
+    due_at: datetime | None
+    completed_at: datetime | None
+    entity_type: EntityType | None
+    entity_id: str | None
+    assignee_user_id: str | None
     data: dict
     created_at: datetime
     updated_at: datetime
@@ -384,8 +384,8 @@ class TimelineEventOut(ORMBase):
     entity_id: str
     event_type: str
     occurred_at: datetime
-    actor_user_id: Optional[str]
-    actor_api_key_id: Optional[str]
+    actor_user_id: str | None
+    actor_api_key_id: str | None
     payload: dict
 
 
@@ -398,10 +398,10 @@ class WebhookIn(BaseModel):
 
 
 class WebhookPatch(BaseModel):
-    name: Optional[str] = None
-    url: Optional[str] = None
-    events: Optional[list[str]] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    url: str | None = None
+    events: list[str] | None = None
+    is_active: bool | None = None
 
 
 class WebhookOut(ORMBase):
@@ -411,8 +411,8 @@ class WebhookOut(ORMBase):
     events: list[str]
     is_active: bool
     failure_count: int
-    last_delivery_at: Optional[datetime]
-    last_error: Optional[str]
+    last_delivery_at: datetime | None
+    last_error: str | None
     created_at: datetime
 
 
@@ -425,9 +425,9 @@ class WebhookDeliveryOut(ORMBase):
     webhook_id: str
     event_type: str
     payload: dict
-    status_code: Optional[int]
-    response_body: Optional[str]
-    error: Optional[str]
+    status_code: int | None
+    response_body: str | None
+    error: str | None
     attempts: int
     succeeded: bool
     created_at: datetime
@@ -439,10 +439,10 @@ class FileOut(ORMBase):
     filename: str
     content_type: str
     size_bytes: int
-    sha256: Optional[str]
-    entity_type: Optional[EntityType]
-    entity_id: Optional[str]
-    uploaded_by_user_id: Optional[str]
+    sha256: str | None
+    entity_type: EntityType | None
+    entity_id: str | None
+    uploaded_by_user_id: str | None
     data: dict
     created_at: datetime
 
@@ -457,12 +457,12 @@ class BulkUpsertResult(BaseModel):
 # ---------- Generic responses ----------
 class OkResponse(BaseModel):
     ok: bool = True
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class ErrorResponse(BaseModel):
     error: str
-    suggestion: Optional[str] = None
+    suggestion: str | None = None
 
 
 # ---------- Schema-describing endpoint ----------
@@ -489,10 +489,10 @@ class AnyEntityOut(BaseModel):
 # ---------- Memory ----------
 class MemoryRecallIn(BaseModel):
     query: str
-    entity_type: Optional[EntityType] = None
-    entity_id: Optional[str] = None
+    entity_type: EntityType | None = None
+    entity_id: str | None = None
     limit: int = Field(10, ge=1, le=100)
-    connectors: Optional[list[str]] = None
+    connectors: list[str] | None = None
 
 
 class MemoryRecallItem(BaseModel):
@@ -513,7 +513,7 @@ class MemoryLinkIn(BaseModel):
     external_id: str
     crm_entity_type: EntityType
     crm_entity_id: str
-    note: Optional[str] = None
+    note: str | None = None
     data: dict = {}
 
 
@@ -523,7 +523,7 @@ class MemoryLinkOut(ORMBase):
     external_id: str
     crm_entity_type: EntityType
     crm_entity_id: str
-    note: Optional[str]
+    note: str | None
     data: dict
     created_at: datetime
 
@@ -533,11 +533,11 @@ class IngestIn(BaseModel):
     source: str = Field(description="free-form label: hubspot, apollo, paste, etc.")
     format: str = Field(description="one of: csv, vcard, json, text")
     payload: Any = Field(description="raw data; shape depends on format")
-    mapping: Optional[dict] = Field(
+    mapping: dict | None = Field(
         default=None,
         description="optional field map for json/csv: {source_field: target_field}",
     )
-    entity: Optional[str] = Field(
+    entity: str | None = Field(
         default=None,
         description="optional target entity: contact | company | activity | note",
     )
@@ -547,8 +547,8 @@ class IngestIn(BaseModel):
 class IngestDiagnostic(BaseModel):
     level: str  # info | warn | error
     message: str
-    row: Optional[int] = None
-    field: Optional[str] = None
+    row: int | None = None
+    field: str | None = None
 
 
 class IngestOut(BaseModel):

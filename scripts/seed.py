@@ -12,8 +12,8 @@ import argparse
 from app.db import SessionLocal
 from app.models import (
     ApiKey,
-    Membership,
     MemberRole,
+    Membership,
     Pipeline,
     Stage,
     User,
@@ -65,13 +65,26 @@ def main():
                 ("Lost", "lost", 5, 0, False, True),
             ]
             for name, slug, pos, prob, won, lost in stages:
-                db.add(Stage(pipeline_id=pipe.id, name=name, slug=slug,
-                             position=pos, probability=prob, is_won=won, is_lost=lost))
+                db.add(
+                    Stage(
+                        pipeline_id=pipe.id,
+                        name=name,
+                        slug=slug,
+                        position=pos,
+                        probability=prob,
+                        is_won=won,
+                        is_lost=lost,
+                    )
+                )
 
         full, prefix, digest = generate_api_key()
         key = ApiKey(
-            workspace_id=ws.id, user_id=user.id,
-            name="seed-key", prefix=prefix, key_hash=digest, role=MemberRole.owner,
+            workspace_id=ws.id,
+            user_id=user.id,
+            name="seed-key",
+            prefix=prefix,
+            key_hash=digest,
+            role=MemberRole.owner,
         )
         db.add(key)
         db.commit()

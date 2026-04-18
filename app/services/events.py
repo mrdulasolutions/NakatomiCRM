@@ -4,7 +4,6 @@ mirrors to any enabled memory connectors."""
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import BackgroundTasks
 from sqlalchemy import select
@@ -26,7 +25,7 @@ def emit(
     entity_type: EntityType | str,
     entity_id: str,
     payload: dict,
-    background: Optional[BackgroundTasks] = None,
+    background: BackgroundTasks | None = None,
 ) -> None:
     """Record a timeline event, an audit entry, and fan out to matching webhooks."""
     et_enum = entity_type if isinstance(entity_type, EntityType) else EntityType(entity_type)
@@ -58,7 +57,7 @@ def emit(
         return
 
     # Fan out to enabled memory connectors (best-effort, runs in background).
-    for name, connector in enabled_connectors().items():
+    for name in enabled_connectors():
         background.add_task(
             _mirror_to_memory,
             connector_name=name,

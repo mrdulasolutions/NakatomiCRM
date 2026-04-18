@@ -22,7 +22,8 @@ def ingest(
     p: Principal = Depends(get_principal),
 ) -> IngestOut:
     result = run_ingest(
-        db, p,
+        db,
+        p,
         fmt=req.format.lower(),
         payload=req.payload,
         mapping=req.mapping,
@@ -45,12 +46,14 @@ def ingest(
 
     # Emit ingest.completed once per run.
     emit(
-        db, p,
+        db,
+        p,
         event_type="ingest.completed",
         entity_type="file",  # ingest doesn't attach to one entity; file is the closest generic bucket
         entity_id=run.id,
         payload={
-            "source": req.source, "format": req.format,
+            "source": req.source,
+            "format": req.format,
             "record_count": result.record_count,
             "created": len(result.created_ids),
             "updated": len(result.updated_ids),

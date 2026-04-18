@@ -12,9 +12,7 @@ from sqlalchemy.sql import ColumnElement
 
 
 def encode_cursor(created_at: datetime, row_id: str) -> str:
-    return base64.urlsafe_b64encode(
-        json.dumps({"t": created_at.isoformat(), "i": row_id}).encode()
-    ).decode()
+    return base64.urlsafe_b64encode(json.dumps({"t": created_at.isoformat(), "i": row_id}).encode()).decode()
 
 
 def decode_cursor(cursor: str) -> tuple[datetime, str] | None:
