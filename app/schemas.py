@@ -492,6 +492,50 @@ class AnyEntityOut(BaseModel):
     record: dict[str, Any]
 
 
+# ---------- Custom fields ----------
+_ALLOWED_FIELD_TYPES = {"string", "text", "number", "bool", "date", "url", "email", "select"}
+
+
+class CustomFieldIn(BaseModel):
+    entity_type: EntityType
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str
+    field_type: str = Field(default="string")
+    required: bool = False
+    default_value: dict | None = None
+    options: list[str] = []
+    description: str | None = None
+
+    def _check(self) -> None:
+        if self.field_type not in _ALLOWED_FIELD_TYPES:
+            raise ValueError(
+                f"field_type must be one of: {sorted(_ALLOWED_FIELD_TYPES)}",
+            )
+
+
+class CustomFieldPatch(BaseModel):
+    label: str | None = None
+    field_type: str | None = None
+    required: bool | None = None
+    default_value: dict | None = None
+    options: list[str] | None = None
+    description: str | None = None
+
+
+class CustomFieldOut(ORMBase):
+    id: str
+    entity_type: EntityType
+    name: str
+    label: str
+    field_type: str
+    required: bool
+    default_value: dict
+    options: list[str]
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 # ---------- Memory ----------
 class MemoryRecallIn(BaseModel):
     query: str

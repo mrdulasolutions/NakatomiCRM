@@ -154,6 +154,24 @@ _ENTITIES = [
         },
         endpoints={"upload": "POST /files (multipart)", "download": "GET /files/{id}", "list": "GET /files"},
     ),
+    EntitySchemaOut(
+        entity="custom_field",
+        fields={
+            "entity_type": "entity enum",
+            "name": "snake_case",
+            "label": "string",
+            "field_type": "string|text|number|bool|date|url|email|select",
+            "required": "bool",
+            "default_value": "any JSON",
+            "options": "string[] (for select)",
+        },
+        endpoints={
+            "list": "GET /custom-fields",
+            "create": "POST /custom-fields (admin/owner)",
+            "patch": "PATCH /custom-fields/{id}",
+            "delete": "DELETE /custom-fields/{id}",
+        },
+    ),
 ]
 
 

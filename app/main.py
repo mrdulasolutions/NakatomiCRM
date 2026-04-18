@@ -17,6 +17,7 @@ from app.routers import (
     auth,
     companies,
     contacts,
+    custom_fields,
     dashboard,
     deals,
     files,
@@ -121,6 +122,7 @@ app.include_router(webhooks.router)
 app.include_router(files.router)
 app.include_router(memory.router)
 app.include_router(ingest.router)
+app.include_router(custom_fields.router)
 app.include_router(schema_router.router)
 app.include_router(dashboard.router)
 
