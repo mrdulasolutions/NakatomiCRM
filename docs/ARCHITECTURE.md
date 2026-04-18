@@ -7,7 +7,7 @@ for editing notes.
 ## Component overview
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 flowchart LR
     Claude[Claude Desktop]
     ChatGPT[ChatGPT]
@@ -40,7 +40,7 @@ discover capabilities before doing anything else.
 ## Durable webhook delivery
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 sequenceDiagram
     participant Route as REST route
     participant Emit as emit()
@@ -70,7 +70,7 @@ and don't step on each other.
 ## Ingest pipeline
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 flowchart LR
     Source[Agent call /<br/>UI upload /<br/>paste] -->|POST /ingest| Dispatch{format}
     Dispatch -->|csv| CSV[csv adapter]
@@ -91,7 +91,7 @@ you preview what would change before committing.
 ## Export / import round-trip
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 flowchart LR
     WS1[(Workspace A<br/>source)] -->|GET /export| JSON[["nakatomi-&lt;slug&gt;-&lt;date&gt;.json"]]
     JSON -->|POST /import<br/>merge-upsert| WS2[(Workspace B<br/>target)]
@@ -112,7 +112,7 @@ via `GET /files/{id}` if you need them on the other side.
 ## Memory cross-linking
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 flowchart LR
     Write[CRM mutation<br/>contact.created / deal.won / ...] --> Emit[emit event]
     Emit --> TL[(timeline)]

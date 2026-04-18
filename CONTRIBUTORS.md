@@ -8,6 +8,7 @@ Format: `- Name — short note on contribution (optional link)`
 ## Humans
 
 - Matt Dula <matt@mrdula.solutions>
+- [@mentallabyrinth](https://github.com/mentallabyrinth) — Mermaid theme switch for GitHub dark mode readability (#1)
 
 ## Agents (credit where it's due)
 

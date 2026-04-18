@@ -187,7 +187,7 @@ leads overnight, AE agent moved 3 deals forward."* Transparent, auditable.
 All share the CRM as their working memory.
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 flowchart TB
     Planner[Planner agent<br/>once per day<br/>strategy + ICP] -->|tags contacts by campaign| CRM[(Nakatomi<br/>pipeline + contacts + activities)]
     CRM -->|cursor-paginated| Executor[Executor agent<br/>N parallel<br/>sends email via Gmail MCP<br/>logs activity in CRM]
@@ -219,7 +219,7 @@ flowchart TB
   the latest state.
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 sequenceDiagram
     participant R as Researcher
     participant N as Negotiator

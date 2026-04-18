@@ -9,7 +9,7 @@ edited in two ways.
 Find the diagram you want to change in its MD file. It looks like:
 
     ```mermaid
-    %%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+    %%{init: {"look": "handDrawn", "theme": "dark"}}%%
     flowchart LR
       A --> B
     ```
