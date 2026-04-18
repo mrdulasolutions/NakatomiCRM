@@ -215,6 +215,16 @@ def llms_txt():
     return PlainTextResponse("Nakatomi — see /schema and /openapi.json")
 
 
+_NAKATOMI_TXT = _PUBLIC_DIR / "nakatomi.txt"
+
+
+@app.get("/nakatomi.txt", response_class=PlainTextResponse, include_in_schema=False)
+def nakatomi_txt():
+    if _NAKATOMI_TXT.exists():
+        return PlainTextResponse(_NAKATOMI_TXT.read_text())
+    return PlainTextResponse("")
+
+
 # OAuth routes MUST be registered before the /.well-known static mount below;
 # the dynamic oauth-authorization-server + oauth-protected-resource metadata
 # endpoints share that path prefix with the static agent.json.
