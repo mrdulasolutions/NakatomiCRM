@@ -254,19 +254,24 @@ def _render_login(
             .replace("'", "&#39;")
         )
 
-    return _LOGIN_PAGE.format(
-        client_name=esc(client.name),
-        client_id=esc(client.id),
-        redirect_uri=esc(redirect_uri),
-        response_type=esc(response_type),
-        state=esc(state),
-        scope=esc(scope),
-        code_challenge=esc(code_challenge),
-        code_challenge_method=esc(code_challenge_method),
-        email=esc(email),
-        error_html=error_html,
-        workspace_select=ws_html,
-    )
+    # str.replace instead of .format() — the CSS in the template has literal
+    # `{ }` pairs which the format-string mini-language tries to parse.
+    html = _LOGIN_PAGE
+    for marker, value in (
+        ("{client_name}", esc(client.name)),
+        ("{client_id}", esc(client.id)),
+        ("{redirect_uri}", esc(redirect_uri)),
+        ("{response_type}", esc(response_type)),
+        ("{state}", esc(state)),
+        ("{scope}", esc(scope)),
+        ("{code_challenge}", esc(code_challenge)),
+        ("{code_challenge_method}", esc(code_challenge_method)),
+        ("{email}", esc(email)),
+        ("{error_html}", error_html),
+        ("{workspace_select}", ws_html),
+    ):
+        html = html.replace(marker, value)
+    return html
 
 
 @router.get("/oauth/authorize", response_class=HTMLResponse)
@@ -326,8 +331,7 @@ def authorize_post(
         raise HTTPException(status_code=400, detail="unknown client_id or redirect_uri not registered")
 
     user = db.scalar(select(User).where(User.email == email.lower()))
-    invalid = not user or not verify_password(password, user.password_hash) or not user.is_active
-    if invalid:
+    if not user or not user.is_active or not verify_password(password, user.password_hash):
         return HTMLResponse(
             _render_login(
                 client=client,
@@ -369,6 +373,7 @@ def authorize_post(
         chosen_ws_id = memberships[0].workspace_id
     else:
         # Multiple workspaces, no selection — show form with the dropdown.
+        ws_rows = [db.get(Workspace, m.workspace_id) for m in memberships]
         return HTMLResponse(
             _render_login(
                 client=client,
@@ -380,7 +385,7 @@ def authorize_post(
                 code_challenge_method=code_challenge_method,
                 email=email,
                 error="pick a workspace to authorize",
-                workspaces=[db.get(Workspace, m.workspace_id) for m in memberships],
+                workspaces=[w for w in ws_rows if w is not None],
             ),
             status_code=200,
         )
@@ -532,9 +537,10 @@ def _issue_tokens(
             expires_at=now + _REFRESH_TOKEN_TTL,
         )
     )
-    # We need to set `data` on the refresh-token row. Fetch it after flush.
+    # Set `data` on the refresh-token row so we can identify it at renewal.
     db.flush()
     refresh_row = db.scalar(select(ApiKey).where(ApiKey.key_hash == refresh_hash))
+    assert refresh_row is not None, "refresh token row vanished immediately after flush"
     refresh_row.data = {"oauth": {"kind": "refresh", "client_id": client_id, "scope": scope}}
 
     return access_full, refresh_full
