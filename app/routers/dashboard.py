@@ -63,6 +63,27 @@ _DASHBOARD_HTML = """<!doctype html>
     .card .amt { color: #7ee787; font-size: 11px; }
     .col-total { color: #6cf; font-size: 11px; }
 
+    /* webhooks view */
+    .wh-item { background: #11151a; border: 1px solid #20242a; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+    .wh-head { padding: 10px 14px; cursor: pointer; display: flex; gap: 12px; align-items: center; }
+    .wh-head:hover { background: #161b21; }
+    .wh-name { color: #6cf; font-size: 13px; font-weight: 600; }
+    .wh-url { color: #9ab; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .wh-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; border: 1px solid #20242a; color: #9ab; letter-spacing: 0.5px; text-transform: uppercase; }
+    .wh-badge.fail { color: #ff8b8b; border-color: #4a2830; }
+    .wh-badge.ok   { color: #7ee787; border-color: #224432; }
+    .wh-badge.off  { color: #7a8590; border-color: #2a313a; }
+    .wh-body { border-top: 1px solid #20242a; padding: 10px 14px; background: #0e1216; }
+    .wh-delivery { padding: 8px 0; border-bottom: 1px dashed #20242a; font-size: 11px; line-height: 1.5; }
+    .wh-delivery:last-child { border-bottom: none; }
+    .wh-delivery .status { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; margin-right: 6px; }
+    .wh-delivery .status.succeeded { background: #122a1a; color: #7ee787; }
+    .wh-delivery .status.dead      { background: #2a1212; color: #ff8b8b; }
+    .wh-delivery .status.pending   { background: #1a1a2a; color: #c8a8ff; }
+    .wh-delivery .event { color: #6cf; }
+    .wh-delivery .meta { color: #7a8590; }
+    .wh-delivery pre { margin: 4px 0 0 0; padding: 6px 8px; background: #0b0d10; border: 1px solid #20242a; border-radius: 4px; font-size: 10px; color: #e6e8ea; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
+
     /* auth */
     .auth { padding: 18px; max-width: 420px; margin: 64px auto; background: #11151a; border: 1px solid #20242a; border-radius: 8px; }
     input, button#save { font: inherit; padding: 8px 10px; background: #0b0d10; color: #e6e8ea; border: 1px solid #20242a; border-radius: 6px; width: 100%; margin-top: 8px; box-sizing: border-box; }
@@ -77,6 +98,7 @@ _DASHBOARD_HTML = """<!doctype html>
   <nav>
     <button data-view="audit" class="active">Audit</button>
     <button data-view="kanban">Kanban</button>
+    <button data-view="webhooks">Webhooks</button>
   </nav>
   <span style="flex:1"></span>
   <button id="logout" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">logout</button>
@@ -103,6 +125,20 @@ _DASHBOARD_HTML = """<!doctype html>
   <div id="view-kanban" class="view">
     <div id="pipe-label" class="pipe-label">pipeline:</div>
     <div class="kanban" id="kanban"></div>
+  </div>
+  <div id="view-webhooks" class="view">
+    <div id="wh-controls" style="padding:8px 4px;color:#9ab;font-size:11px;display:flex;gap:12px;align-items:center">
+      <span>status filter:</span>
+      <select id="wh-filter" style="padding:4px 8px;background:#0b0d10;color:#e6e8ea;border:1px solid #20242a;border-radius:6px;font:inherit">
+        <option value="">all</option>
+        <option value="pending">pending</option>
+        <option value="succeeded">succeeded</option>
+        <option value="dead">dead</option>
+      </select>
+      <span style="flex:1"></span>
+      <button id="wh-refresh" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">refresh</button>
+    </div>
+    <div id="wh-root"></div>
   </div>
 </main>
 
@@ -238,10 +274,67 @@ async function loadKanban() {
   }
 }
 
+async function loadWebhooks() {
+  const filter = document.getElementById("wh-filter").value;
+  const hooks = await api("/webhooks");
+  const root = document.getElementById("wh-root");
+  root.innerHTML = "";
+  if (!hooks.length) { root.appendChild(empty()); return; }
+
+  for (const hook of hooks) {
+    const item = document.createElement("div"); item.className = "wh-item";
+    const badgeClass = !hook.is_active ? "off" : hook.failure_count > 0 ? "fail" : "ok";
+    const badgeText  = !hook.is_active ? "disabled" : hook.failure_count > 0 ? `${hook.failure_count} failures` : "healthy";
+    const head = document.createElement("div"); head.className = "wh-head";
+    head.innerHTML = `
+      <div class="wh-name">${esc(hook.name)}</div>
+      <div class="wh-url">${esc(hook.url)}</div>
+      <span class="wh-badge ${badgeClass}">${badgeText}</span>
+      <span class="meta" style="color:#7a8590;font-size:11px">${hook.last_delivery_at ? "last: " + new Date(hook.last_delivery_at).toLocaleString() : "never fired"}</span>
+    `;
+    const body = document.createElement("div"); body.className = "wh-body"; body.hidden = true;
+
+    head.addEventListener("click", async () => {
+      if (body.hidden) {
+        body.hidden = false;
+        body.innerHTML = '<div class="meta">loading…</div>';
+        try {
+          const deliveries = await api(`/webhooks/${hook.id}/deliveries?limit=50`);
+          const filtered = filter ? deliveries.filter(d => d.status === filter) : deliveries;
+          body.innerHTML = "";
+          if (!filtered.length) { body.appendChild(empty()); return; }
+          for (const d of filtered) {
+            const row = document.createElement("div"); row.className = "wh-delivery";
+            const status = d.status || (d.succeeded ? "succeeded" : "pending");
+            const parts = [`<span class="status ${status}">${status}</span>`];
+            parts.push(`<span class="event">${esc(d.event_type)}</span>`);
+            parts.push(`<span class="meta"> · attempt ${d.attempts}`);
+            if (d.status_code != null) parts.push(` · http ${d.status_code}`);
+            parts.push(` · ${new Date(d.created_at).toLocaleString()}</span>`);
+            if (d.error) parts.push(`<div class="meta" style="color:#ff8b8b">error: ${esc(d.error)}</div>`);
+            if (d.response_body) parts.push(`<pre>${esc(d.response_body.slice(0, 400))}</pre>`);
+            row.innerHTML = parts.join("");
+            body.appendChild(row);
+          }
+        } catch (err) {
+          body.innerHTML = `<div class="meta" style="color:#ff8b8b">failed: ${esc(err.message)}</div>`;
+        }
+      } else {
+        body.hidden = true;
+      }
+    });
+
+    item.appendChild(head);
+    item.appendChild(body);
+    root.appendChild(item);
+  }
+}
+
 function switchView(name) {
   for (const b of document.querySelectorAll("nav button")) b.classList.toggle("active", b.dataset.view === name);
   for (const v of document.querySelectorAll(".view")) v.classList.toggle("active", v.id === "view-" + name);
   if (name === "kanban") loadKanban().catch(err => { console.error(err); clearKey(); });
+  if (name === "webhooks") loadWebhooks().catch(err => { console.error(err); clearKey(); });
 }
 
 async function init() {
@@ -249,6 +342,8 @@ async function init() {
   document.getElementById("app").hidden = false;
   try { await loadAudit(); } catch (e) { console.error(e); clearKey(); return; }
   for (const b of document.querySelectorAll("nav button")) b.addEventListener("click", () => switchView(b.dataset.view));
+  document.getElementById("wh-refresh").addEventListener("click", () => loadWebhooks());
+  document.getElementById("wh-filter").addEventListener("change", () => loadWebhooks());
 }
 
 document.getElementById("save").onclick = () => {
