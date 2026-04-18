@@ -347,6 +347,77 @@ def list_pipelines(ctx: Context) -> list[dict]:
 
 
 @mcp.tool()
+def create_pipeline(
+    ctx: Context,
+    name: str,
+    slug: str,
+    stages: list[dict],
+    is_default: bool = False,
+    data: dict | None = None,
+) -> dict:
+    """Create a pipeline with its stages in one call.
+
+    Each entry in ``stages`` accepts: ``name`` (required), ``slug`` (required,
+    ``[a-z0-9][a-z0-9_-]*``), ``position`` (int, default 0), ``probability``
+    (0–1 float, default 0), ``is_won`` (bool), ``is_lost`` (bool). Unknown
+    keys are rejected.
+
+    If ``is_default`` is true, any other pipeline flagged default in this
+    workspace is flipped off — only one default at a time.
+    """
+    allowed = {"name", "slug", "position", "probability", "is_won", "is_lost"}
+    p, db = _principal_from_ctx(ctx)
+    try:
+        pipe = Pipeline(
+            workspace_id=p.workspace.id,
+            name=name,
+            slug=slug,
+            is_default=is_default,
+            data=data or {},
+        )
+        db.add(pipe)
+        db.flush()
+        for s in stages:
+            extra = set(s) - allowed
+            if extra:
+                raise RuntimeError(f"unknown stage field(s): {sorted(extra)}")
+            if "name" not in s or "slug" not in s:
+                raise RuntimeError("stage requires name and slug")
+            db.add(Stage(pipeline_id=pipe.id, **s))
+        if is_default:
+            others = db.scalars(
+                select(Pipeline).where(
+                    Pipeline.workspace_id == p.workspace.id,
+                    Pipeline.id != pipe.id,
+                )
+            ).all()
+            for o in others:
+                o.is_default = False
+        db.commit()
+        db.refresh(pipe)
+        return {
+            "id": pipe.id,
+            "name": pipe.name,
+            "slug": pipe.slug,
+            "is_default": pipe.is_default,
+            "stages": [
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "slug": s.slug,
+                    "position": s.position,
+                    "probability": float(s.probability),
+                    "is_won": s.is_won,
+                    "is_lost": s.is_lost,
+                }
+                for s in pipe.stages
+            ],
+        }
+    finally:
+        db.close()
+
+
+@mcp.tool()
 def create_deal(
     ctx: Context,
     name: str,
