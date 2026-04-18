@@ -8,7 +8,7 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 
 ```mermaid
-%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+%%{init: {"look": "handDrawn", "theme": "dark"}}%%
 flowchart LR
     Agents[Claude / ChatGPT<br/>Cursor / Perplexity] --> Nakatomi
     CLI[curl / scripts] --> Nakatomi
