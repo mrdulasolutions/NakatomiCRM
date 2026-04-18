@@ -54,6 +54,8 @@ def login(req: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     if not mem:
         raise HTTPException(status_code=403, detail="user has no workspace")
     ws = db.get(Workspace, mem.workspace_id)
+    if not ws:
+        raise HTTPException(status_code=500, detail="membership references missing workspace")
     token = create_access_token(user.id, extra={"ws": ws.id})
     return TokenResponse(
         access_token=token,

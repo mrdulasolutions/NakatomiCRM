@@ -36,6 +36,8 @@ def update_current(
     p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
 ) -> WorkspaceOut:
     ws = db.get(Workspace, p.workspace.id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="workspace vanished")
     if req.name is not None:
         ws.name = req.name
     if req.data is not None:

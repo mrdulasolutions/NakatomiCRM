@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, HTTPException, Request, status
@@ -46,6 +47,14 @@ def _auth_error(msg: str) -> HTTPException:
 
 def _forbidden(msg: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=msg)
+
+
+def _looks_like_uuid(v: str) -> bool:
+    try:
+        uuid.UUID(v)
+        return True
+    except (ValueError, AttributeError):
+        return False
 
 
 def _extract_bearer(authorization: str | None) -> str | None:
@@ -94,9 +103,12 @@ def get_principal(
     workspace_ref = x_workspace or payload.get("ws")
     if not workspace_ref:
         raise _auth_error("X-Workspace header required when using user tokens")
-    ws = db.scalar(
-        select(Workspace).where((Workspace.id == workspace_ref) | (Workspace.slug == workspace_ref))
-    )
+    # Avoid `WHERE id = :ref OR slug = :ref`: Postgres rejects a non-UUID string
+    # bound to a UUID column before it can fall through to the slug branch.
+    if _looks_like_uuid(workspace_ref):
+        ws = db.get(Workspace, workspace_ref)
+    else:
+        ws = db.scalar(select(Workspace).where(Workspace.slug == workspace_ref))
     if not ws:
         raise _auth_error("workspace not found")
     mem = db.scalar(select(Membership).where(Membership.workspace_id == ws.id, Membership.user_id == user.id))
