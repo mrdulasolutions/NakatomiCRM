@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal
+from app.deps import Pagination, Principal, get_pagination, get_principal
 from app.models import EntityType, MemoryLink
 from app.schemas import (
     MemoryLinkIn,
@@ -16,9 +16,11 @@ from app.schemas import (
     MemoryRecallItem,
     MemoryRecallOut,
     OkResponse,
+    Page,
 )
 from app.services.events import emit
 from app.services.memory import enabled_connectors, get_connector
+from app.services.pagination import apply_cursor, encode_cursor
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 log = logging.getLogger("nakatomi.memory")
@@ -27,6 +29,46 @@ log = logging.getLogger("nakatomi.memory")
 @router.get("/connectors", response_model=list[str])
 def list_connectors(_: Principal = Depends(get_principal)) -> list[str]:
     return list(enabled_connectors().keys())
+
+
+@router.get("/links", response_model=Page[MemoryLinkOut])
+def list_links(
+    connector: str | None = Query(None, description="filter by connector name"),
+    entity_type: EntityType | None = None,
+    entity_id: str | None = None,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+    page: Pagination = Depends(get_pagination),
+) -> Page[MemoryLinkOut]:
+    """List every cross-link between a CRM entity and an external memory in
+    this workspace. Paginated via cursor. Filter by connector, entity type,
+    or specific entity id for drill-down.
+
+    For a focused view of one entity, prefer ``GET /memory/trace/{type}/{id}``
+    — same data, one hop.
+    """
+    q = select(MemoryLink).where(MemoryLink.workspace_id == p.workspace.id)
+    if connector:
+        q = q.where(MemoryLink.connector == connector)
+    if entity_type:
+        q = q.where(MemoryLink.crm_entity_type == entity_type)
+    if entity_id:
+        q = q.where(MemoryLink.crm_entity_id == entity_id)
+
+    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
+    q = apply_cursor(q, model=MemoryLink, cursor=page.cursor)
+    q = q.order_by(MemoryLink.created_at.desc(), MemoryLink.id.desc()).limit(page.limit + 1)
+    rows = db.scalars(q).all()
+    next_cursor = None
+    if len(rows) > page.limit:
+        last = rows[page.limit - 1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+        rows = rows[: page.limit]
+    return Page[MemoryLinkOut](
+        items=[MemoryLinkOut.model_validate(r) for r in rows],
+        next_cursor=next_cursor,
+        count=total,
+    )
 
 
 @router.post("/recall", response_model=MemoryRecallOut)

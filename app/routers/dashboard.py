@@ -84,6 +84,17 @@ _DASHBOARD_HTML = """<!doctype html>
     .wh-delivery .meta { color: #7a8590; }
     .wh-delivery pre { margin: 4px 0 0 0; padding: 6px 8px; background: #0b0d10; border: 1px solid #20242a; border-radius: 4px; font-size: 10px; color: #e6e8ea; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
 
+    /* memory view */
+    .mem-link { background: #11151a; border: 1px solid #20242a; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; font-size: 12px; display: grid; grid-template-columns: auto auto 1fr auto; gap: 12px; align-items: center; }
+    .mem-link .pill { padding: 2px 8px; border-radius: 10px; border: 1px solid #20242a; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .mem-link .pill.connector { color: #c8a8ff; border-color: #3a2a55; }
+    .mem-link .pill.entity    { color: #7ee787; border-color: #224432; }
+    .mem-link .ref { color: #9ab; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mem-link .ref .mono { color: #e6e8ea; }
+    .mem-link .t { color: #7a8590; font-size: 10px; }
+    .mem-link .note { grid-column: 1 / -1; color: #9ab; font-size: 11px; padding-top: 4px; border-top: 1px dashed #20242a; margin-top: 6px; }
+    .mem-load-more { display: block; width: 100%; padding: 8px; margin-top: 8px; background: transparent; color: #6cf; border: 1px dashed #20242a; border-radius: 6px; cursor: pointer; font: inherit; font-size: 11px; }
+
     /* auth */
     .auth { padding: 18px; max-width: 420px; margin: 64px auto; background: #11151a; border: 1px solid #20242a; border-radius: 8px; }
     input, button#save { font: inherit; padding: 8px 10px; background: #0b0d10; color: #e6e8ea; border: 1px solid #20242a; border-radius: 6px; width: 100%; margin-top: 8px; box-sizing: border-box; }
@@ -99,6 +110,7 @@ _DASHBOARD_HTML = """<!doctype html>
     <button data-view="audit" class="active">Audit</button>
     <button data-view="kanban">Kanban</button>
     <button data-view="webhooks">Webhooks</button>
+    <button data-view="memory">Memory</button>
   </nav>
   <span style="flex:1"></span>
   <button id="logout" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">logout</button>
@@ -139,6 +151,30 @@ _DASHBOARD_HTML = """<!doctype html>
       <button id="wh-refresh" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">refresh</button>
     </div>
     <div id="wh-root"></div>
+  </div>
+  <div id="view-memory" class="view">
+    <div style="padding:8px 4px;color:#9ab;font-size:11px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span>connectors:</span>
+      <span id="mem-connectors" style="color:#6cf">—</span>
+      <span style="flex:1"></span>
+      <span>filter:</span>
+      <select id="mem-connector-filter" style="padding:4px 8px;background:#0b0d10;color:#e6e8ea;border:1px solid #20242a;border-radius:6px;font:inherit">
+        <option value="">all connectors</option>
+      </select>
+      <select id="mem-entity-filter" style="padding:4px 8px;background:#0b0d10;color:#e6e8ea;border:1px solid #20242a;border-radius:6px;font:inherit">
+        <option value="">all entities</option>
+        <option value="contact">contact</option>
+        <option value="company">company</option>
+        <option value="deal">deal</option>
+        <option value="activity">activity</option>
+        <option value="note">note</option>
+        <option value="task">task</option>
+        <option value="file">file</option>
+      </select>
+      <button id="mem-refresh" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">refresh</button>
+    </div>
+    <div id="mem-total" style="padding:4px;color:#6cf;font-size:11px"></div>
+    <div id="mem-root"></div>
   </div>
 </main>
 
@@ -330,11 +366,75 @@ async function loadWebhooks() {
   }
 }
 
+let _memCursor = null;
+let _memFirstLoad = true;
+
+async function loadMemory(reset = true) {
+  if (reset) _memCursor = null;
+  const connector = document.getElementById("mem-connector-filter").value;
+  const entityType = document.getElementById("mem-entity-filter").value;
+
+  // Populate connectors list + filter options on first open.
+  if (_memFirstLoad) {
+    try {
+      const conns = await api("/memory/connectors");
+      const el = document.getElementById("mem-connectors");
+      el.textContent = conns.length ? conns.join(", ") : "none enabled";
+      const sel = document.getElementById("mem-connector-filter");
+      for (const c of conns) {
+        const opt = document.createElement("option"); opt.value = c; opt.textContent = c; sel.appendChild(opt);
+      }
+    } catch (e) { /* non-fatal */ }
+    _memFirstLoad = false;
+  }
+
+  const qs = new URLSearchParams({ limit: "50" });
+  if (connector) qs.set("connector", connector);
+  if (entityType) qs.set("entity_type", entityType);
+  if (_memCursor) qs.set("cursor", _memCursor);
+
+  const page = await api(`/memory/links?${qs}`);
+  const root = document.getElementById("mem-root");
+  const totalEl = document.getElementById("mem-total");
+  if (reset) root.innerHTML = "";
+  totalEl.textContent = `${page.count} link${page.count === 1 ? "" : "s"} total`;
+
+  if (reset && !page.items.length) { root.appendChild(empty()); return; }
+
+  for (const link of page.items) {
+    const div = document.createElement("div"); div.className = "mem-link";
+    const shortEid = link.crm_entity_id.slice(0, 8);
+    const shortExt = (link.external_id || "").slice(0, 40);
+    div.innerHTML = `
+      <span class="pill connector">${esc(link.connector)}</span>
+      <span class="pill entity">${esc(link.crm_entity_type)}</span>
+      <span class="ref">→ <span class="mono">${shortEid}</span> · external: <span class="mono">${esc(shortExt)}</span></span>
+      <span class="t">${new Date(link.created_at).toLocaleString()}</span>
+      ${link.note ? `<div class="note">${esc(link.note)}</div>` : ""}
+    `;
+    root.appendChild(div);
+  }
+
+  // Remove any old "load more" button first.
+  const prev = root.querySelector(".mem-load-more");
+  if (prev) prev.remove();
+
+  if (page.next_cursor) {
+    _memCursor = page.next_cursor;
+    const btn = document.createElement("button");
+    btn.className = "mem-load-more";
+    btn.textContent = `load 50 more`;
+    btn.addEventListener("click", () => loadMemory(false));
+    root.appendChild(btn);
+  }
+}
+
 function switchView(name) {
   for (const b of document.querySelectorAll("nav button")) b.classList.toggle("active", b.dataset.view === name);
   for (const v of document.querySelectorAll(".view")) v.classList.toggle("active", v.id === "view-" + name);
   if (name === "kanban") loadKanban().catch(err => { console.error(err); clearKey(); });
   if (name === "webhooks") loadWebhooks().catch(err => { console.error(err); clearKey(); });
+  if (name === "memory") loadMemory().catch(err => { console.error(err); clearKey(); });
 }
 
 async function init() {
@@ -344,6 +444,9 @@ async function init() {
   for (const b of document.querySelectorAll("nav button")) b.addEventListener("click", () => switchView(b.dataset.view));
   document.getElementById("wh-refresh").addEventListener("click", () => loadWebhooks());
   document.getElementById("wh-filter").addEventListener("change", () => loadWebhooks());
+  document.getElementById("mem-refresh").addEventListener("click", () => loadMemory());
+  document.getElementById("mem-connector-filter").addEventListener("change", () => loadMemory());
+  document.getElementById("mem-entity-filter").addEventListener("change", () => loadMemory());
 }
 
 document.getElementById("save").onclick = () => {

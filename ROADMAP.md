@@ -121,7 +121,7 @@ job: let a human confirm at a glance what the agents did last night.
   - [x] Recent contacts / companies / deals
   - [x] Deal pipeline kanban (read-only; tab on /dashboard with columns per stage, totals per column, won/lost coloring)
   - [x] Webhook delivery log (Webhooks tab on /dashboard; subscriber list with health badges, click-to-expand delivery rows with status/attempts/http-code/error/response body, status filter)
-  - [ ] Memory link inspector (per entity)
+  - [x] Memory link inspector (Memory tab on /dashboard; `GET /memory/links` backend with connector / entity_type / entity_id filters and cursor pagination)
   - [ ] Audit log search
 - [ ] Auth: local-only by default (binds to 127.0.0.1); short-lived session cookie from API key
 - [ ] Dark mode + keyboard nav
