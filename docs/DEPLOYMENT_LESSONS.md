@@ -25,6 +25,9 @@ Before `railway up`, verify:
 - [ ] `requirements.txt` has `mcp>=1.14` and a compatible `pydantic` (§5, §6)
 - [ ] Alembic migrations are idempotent (each inspects before mutating) (§2)
 - [ ] `Settings.DATABASE_URL` rewrites `postgres://` → `postgresql+psycopg://` (§3)
+- [ ] `uvicorn` invoked with `--proxy-headers --forwarded-allow-ips=*` so OAuth/MCP URLs are https (§13)
+- [ ] `FastMCP(streamable_http_path="/")` + DNS-rebinding guard disabled for remote use (§13)
+- [ ] Parent FastAPI lifespan enters `mcp.session_manager.run()` via AsyncExitStack (§13)
 
 Run `railway up --service nakatomi --detach`, then watch:
 
@@ -438,6 +441,108 @@ Two side-lessons:
 - **If you're writing to a model field, grep the model first.** The
   refresh-token rotation branch wrote `refresh_row.data = {...}`, but
   ApiKey never had a `data` column. Column added in the same migration.
+
+---
+
+### §13 — Claude Desktop's MCP connector cascaded through four more blockers after OAuth worked
+
+**Symptom**
+
+OAuth flow completed successfully — user logged in, consent screen
+accepted, Claude Desktop got an access token. Then Claude Desktop POSTed
+to `/mcp/` and the connection died. Four distinct causes, each hiding
+the next:
+
+1. `307 Temporary Redirect` → `http://nakatomi-production.up.railway.app/mcp/`
+2. `404 Not Found` on `/mcp/mcp` once the scheme was fixed
+3. `500 Invalid host` once the path was fixed
+4. `500 RuntimeError: Task group is not initialized` once rebinding was
+   disabled
+
+**Root causes**
+
+1. **Proxy-terminated TLS.** Railway's edge terminates TLS and forwards
+   plain HTTP to the container. Starlette's `StaticFiles` mount saw
+   `scheme=http` and emitted a 307 to the http URL. Claude Desktop
+   (correctly) refuses to follow an https→http redirect.
+2. **FastMCP's default `streamable_http_path='/mcp'` collides with the
+   parent mount.** We mount the MCP ASGI sub-app at `/mcp`. FastMCP
+   then routes its handler at `/mcp` inside that sub-app, so the
+   full path becomes `/mcp/mcp`. Requests to `/mcp/` 404.
+3. **`TransportSecuritySettings` ships with a DNS-rebinding whitelist
+   that only allows localhost.** Any request with `Host:
+   nakatomi-production.up.railway.app` gets rejected with HTTP 500
+   "Invalid host".
+4. **FastMCP's `streamable_http_app` requires `session_manager.run()`
+   to be active as an async context for the process lifetime.**
+   Mounting the ASGI sub-app alone doesn't enter its lifespan —
+   Starlette doesn't cascade lifespan into mounted sub-apps. First
+   POST to `/mcp/` crashes with "Task group is not initialized".
+
+**Fixes (all four)**
+
+```toml
+# railway.toml — tell uvicorn to trust X-Forwarded-Proto
+startCommand = "sh -c 'alembic upgrade head && exec python -u -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=*'"
+```
+
+```python
+# app/mcp_server.py — serve at the mount root + disable rebinding guard
+from mcp.server.transport_security import TransportSecuritySettings
+
+mcp = FastMCP(
+    "Nakatomi CRM",
+    streamable_http_path="/",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
+```
+
+```python
+# app/main.py — enter session_manager.run() via AsyncExitStack in lifespan
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    async with AsyncExitStack() as stack:
+        from app.mcp_server import mcp as _mcp_server
+        await stack.enter_async_context(_mcp_server.session_manager.run())
+        if settings.WEBHOOK_WORKER_ENABLED:
+            webhook_delivery.start_worker()
+        try:
+            yield
+        finally:
+            webhook_delivery.stop_worker()
+```
+
+**Verification**
+
+```bash
+curl -i -X POST -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}' \
+  https://$HOST/mcp/
+# → HTTP/2 200, content-type: text/event-stream, mcp-session-id: ...
+#   event: message / data: {"jsonrpc":"2.0","id":1,"result":{...}}
+```
+
+**Lessons**
+
+- **Any TLS-terminating proxy needs `--proxy-headers`** on the uvicorn
+  invocation, otherwise every URL your app emits (redirects, absolute
+  links, OAuth issuer, OpenAPI servers) will be http and clients will
+  refuse them.
+- **Check a library's defaults against your mount point.** FastMCP's
+  `streamable_http_path` default assumed you want `/mcp` — with a
+  mount at `/mcp` that becomes `/mcp/mcp`. When a framework exposes a
+  path, either mount it at root and let it own the prefix, or set its
+  internal path to `/`.
+- **Security guards shipped with sensible-looking defaults can be
+  hostile in production.** The DNS-rebinding whitelist defaults to
+  localhost only — fine for desktop MCP servers, silently broken for
+  remote ones. Always skim the security-settings doc of a transport
+  library before shipping.
+- **Starlette mount doesn't cascade lifespan.** If a sub-app (MCP,
+  another FastAPI, an ASGI library) has its own lifespan or a
+  background task group, the parent app has to enter it explicitly.
+  AsyncExitStack keeps this readable when there's more than one.
 
 ---
 
