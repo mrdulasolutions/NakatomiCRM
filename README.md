@@ -6,6 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fmrdulasolutions%2FNakatomiCRM)
 
 ```mermaid
 %%{init: {"look": "handDrawn", "theme": "dark"}}%%
@@ -60,14 +61,28 @@ uvicorn app.main:app --reload
 
 ### Railway (recommended)
 
-1. Fork or import this repo into your GitHub account.
-2. `railway init` and push the repo, or use the Railway dashboard → *New → Deploy from GitHub*.
-3. Add a Postgres plugin. Railway injects `DATABASE_URL` automatically.
-4. Set variables: `SECRET_KEY` (`openssl rand -hex 32`), optional `STORAGE_BACKEND=s3` + S3 keys.
-5. Mount a volume at `/app/data` if using local file storage.
-6. Deploy. Railway's build runs the Dockerfile, which runs `alembic upgrade head` then `uvicorn`.
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fmrdulasolutions%2FNakatomiCRM)
 
-> A one-click Railway template is on the roadmap; see [ROADMAP.md](./ROADMAP.md#v12--install-surface).
+Click the button above for a one-click deploy. Railway reads
+[`railway.toml`](./railway.toml) and the Dockerfile, provisions Postgres,
+runs migrations, and boots the app — about 60–90s end to end. You'll
+be prompted for:
+
+- `SECRET_KEY` — paste the output of `openssl rand -hex 32`
+- (optional) S3 credentials if you want `STORAGE_BACKEND=s3`
+- (optional) memory-connector keys (`DOCDEPLOY_API_KEY`, `SUPERMEMORY_API_KEY`, …)
+
+Everything else has a sensible default. After the deploy promotes,
+`/health` returns `{"ok": true}` and `/mcp/` speaks streamable HTTP.
+
+Full template configuration — every variable, the dashboard publish
+flow, post-deploy seed commands — lives in
+[docs/RAILWAY_TEMPLATE.md](./docs/RAILWAY_TEMPLATE.md).
+
+> **Manual deploy fallback** — if you'd rather not use the template:
+> `railway init` → push the repo → add a Postgres plugin → set
+> `SECRET_KEY` → mount a volume at `/app/data` → deploy. The
+> Dockerfile runs `alembic upgrade head && uvicorn` automatically.
 
 ### Other clouds
 

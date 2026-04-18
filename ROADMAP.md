@@ -57,10 +57,11 @@ Skip to: [v1 Core](#v1--core-crm-shipped), [v1.1 Repo](#v11--repo-hygiene--agent
 
 - [x] `docker-compose.yml` — Postgres + app + volume, one `docker compose up`
 - [x] `install.sh` — detects Docker or Python; bootstraps a local workspace + key
-- [ ] Railway one-click template button in `README.md`
-  - Requires publishing to a public GitHub repo, then registering at
-    `https://railway.app/new/template` with env var prompts (`SECRET_KEY`,
-    `STORAGE_BACKEND`, optional `S3_*`, optional memory connector keys).
+- [x] Railway one-click template button in `README.md`
+  - Generic button shipped (`railway.com/new/template?template=<repo>`).
+    Swap to a published share code once Matt clicks *Publish as Template*
+    on the live deployment — full playbook in
+    [docs/RAILWAY_TEMPLATE.md](./docs/RAILWAY_TEMPLATE.md).
 - [ ] Fly.io / Render deploy recipes (stretch)
 - [ ] Homebrew tap (stretch) — `brew install nakatomi` wrapping the install script
 - [ ] PyPI distribution of an `nakatomi` CLI (stretch) — `nakatomi up`, `nakatomi seed`, `nakatomi dashboard`
@@ -169,8 +170,9 @@ that turn lessons into guardrails:
       push.
 - [ ] Comment top-level deps in `requirements.txt` with the reason for
       each pin.
-- [ ] Railway template publish + one-click deploy button in README
-      (already on v1.2 but the button is currently manual).
+- [x] Railway deploy button shipped in README; publishing the share
+      code via the Railway dashboard is a one-time manual click
+      (playbook: [docs/RAILWAY_TEMPLATE.md](./docs/RAILWAY_TEMPLATE.md)).
 - [ ] A GitHub Issue template "Deploy to new cloud target" that links
       the checklist.
 
