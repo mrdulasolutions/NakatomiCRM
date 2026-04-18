@@ -112,8 +112,11 @@ def _seed(client, h) -> dict:
 
 
 def _wipe_workspace(workspace_id: str) -> None:
-    """Drop every CRM row for a workspace without touching the workspace itself."""
-    # TRUNCATE with CASCADE across the workspace-scoped tables.
+    """Drop every CRM row for a workspace without touching the workspace itself.
+
+    Ordering matters: children before parents. ``stages`` isn't in the list —
+    it has no ``workspace_id`` and cascades when we drop pipelines.
+    """
     tables = [
         "relationships",
         "memory_links",
@@ -122,9 +125,8 @@ def _wipe_workspace(workspace_id: str) -> None:
         "notes",
         "tasks",
         "activities",
-        "deals",
-        "stages",
-        "pipelines",
+        "deals",  # must precede pipelines (FK RESTRICT)
+        "pipelines",  # CASCADEs stages
         "contacts",
         "companies",
         "custom_field_definitions",
