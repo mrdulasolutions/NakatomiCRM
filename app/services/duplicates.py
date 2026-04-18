@@ -6,15 +6,18 @@ Strategies, highest confidence first:
    Score: 1.0. Near-certain duplicate.
 2. **name_similar_same_company** — full-name trigram similarity > 0.80 AND
    both contacts point at the same ``company_id``. Score: 0.8. Catches the
-   common "Ada Lovelace" ↔ "Ada L." case when the company is known.
-3. **last_name_same_first_similar** — identical last name (case-insensitive)
-   AND first-name trigram similarity > 0.70. Score: 0.7. Good at catching
-   typos in the first name.
+   common "Ada Lovelace" ↔ "Ada Lovelacce" case when the company is known.
+3. **last_name_same_first_variant** — identical last name (case-insensitive)
+   AND first names either match exactly or one is a prefix of the other
+   (min length 2). Score: 0.7. Catches "Tom/Thomas", "Matt/Matthew",
+   "Ada/Ada". We specifically don't use trigram similarity on first names
+   because short strings share too few trigrams for it to be a useful
+   signal ("Tom" vs "Thomas" = 0.08).
 
 Pairs are deduplicated across strategies — each (a, b) surfaces once with
 the highest score found. Backed by the trigram GIN indexes added in
-migration 0006. Without pg_trgm, every query falls back to a sequential
-similarity() evaluation; it still works, just slower.
+migration 0006; strategies 1 and 3 are index-friendly even without pg_trgm,
+strategy 2 requires it.
 """
 
 from __future__ import annotations
@@ -65,7 +68,7 @@ name_same_company AS (
           ) > :name_threshold
 ),
 last_name_same AS (
-    SELECT a.id AS a_id, b.id AS b_id, 0.7::float AS score, 'last_name_same_first_similar' AS reason
+    SELECT a.id AS a_id, b.id AS b_id, 0.7::float AS score, 'last_name_same_first_variant' AS reason
     FROM contacts a
     JOIN contacts b
       ON a.workspace_id = b.workspace_id
@@ -75,7 +78,13 @@ last_name_same AS (
       AND a.last_name IS NOT NULL
       AND a.deleted_at IS NULL
       AND b.deleted_at IS NULL
-      AND similarity(coalesce(a.first_name,''), coalesce(b.first_name,'')) > :first_threshold
+      AND a.first_name IS NOT NULL AND length(a.first_name) >= 2
+      AND b.first_name IS NOT NULL AND length(b.first_name) >= 2
+      AND (
+          lower(a.first_name) = lower(b.first_name)
+          OR lower(a.first_name) LIKE lower(b.first_name) || '%'
+          OR lower(b.first_name) LIKE lower(a.first_name) || '%'
+      )
 ),
 combined AS (
     SELECT * FROM exact_email
@@ -102,7 +111,6 @@ def find_duplicates(
     min_score: float = 0.7,
     limit: int = 100,
     name_threshold: float = 0.80,
-    first_threshold: float = 0.70,
 ) -> list[DuplicatePair]:
     rows = db.execute(
         text(_SQL),
@@ -111,7 +119,6 @@ def find_duplicates(
             "min_score": min_score,
             "limit": min(limit, 500),
             "name_threshold": name_threshold,
-            "first_threshold": first_threshold,
         },
     ).all()
     return [DuplicatePair(a_id=r[0], b_id=r[1], score=float(r[2]), reason=r[3]) for r in rows]

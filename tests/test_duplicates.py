@@ -40,15 +40,26 @@ def test_similar_name_same_company_scores_0_8(client, workspace):
     assert pairs[0]["score"] == 0.8
 
 
-def test_same_last_name_similar_first_name(client, workspace):
+def test_same_last_name_first_variant(client, workspace):
+    """Prefix matching catches nickname/long-form pairs like Tom/Thomas."""
     h = workspace["headers"]
-    _mk(client, h, first_name="Ada", last_name="Lovelace")
-    _mk(client, h, first_name="Addy", last_name="Lovelace")  # similar first, same last
+    _mk(client, h, first_name="Tom", last_name="Hanks")
+    _mk(client, h, first_name="Thomas", last_name="Hanks")
 
     r = client.get("/contacts/duplicates", headers=h)
     pairs = r.json()["items"]
     assert len(pairs) == 1
-    assert pairs[0]["reason"] == "last_name_same_first_similar"
+    assert pairs[0]["reason"] == "last_name_same_first_variant"
+
+
+def test_same_last_name_different_first_name_not_matched(client, workspace):
+    """Different first names (no prefix overlap) should NOT surface as a dup."""
+    h = workspace["headers"]
+    _mk(client, h, first_name="Ada", last_name="Hopper")
+    _mk(client, h, first_name="Grace", last_name="Hopper")
+
+    r = client.get("/contacts/duplicates", headers=h)
+    assert r.json() == {"items": [], "count": 0}
 
 
 def test_strongest_reason_wins_when_multiple_strategies_match(client, workspace):
@@ -110,8 +121,8 @@ def test_duplicates_feeds_into_merge(client, workspace):
 
 def test_min_score_filter(client, workspace):
     h = workspace["headers"]
-    _mk(client, h, first_name="Ada", last_name="Lovelace")
-    _mk(client, h, first_name="Addy", last_name="Lovelace")  # 0.7 pair
+    _mk(client, h, first_name="Tom", last_name="Hanks")
+    _mk(client, h, first_name="Thomas", last_name="Hanks")  # 0.7 pair
 
     # Default min_score=0.7 catches it.
     r = client.get("/contacts/duplicates", headers=h)

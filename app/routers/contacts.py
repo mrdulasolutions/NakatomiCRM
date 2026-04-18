@@ -116,7 +116,6 @@ def list_duplicates(
     min_score: float = Query(0.7, ge=0.0, le=1.0),
     limit: int = Query(100, ge=1, le=500),
     name_threshold: float = Query(0.80, ge=0.0, le=1.0),
-    first_threshold: float = Query(0.70, ge=0.0, le=1.0),
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
 ) -> dict:
@@ -128,8 +127,8 @@ def list_duplicates(
     - ``exact_email`` (1.0): same email, case-insensitive
     - ``name_similar_same_company`` (0.8): full-name trigram similarity above
       ``name_threshold`` AND both linked to the same company
-    - ``last_name_same_first_similar`` (0.7): identical last name AND first-name
-      similarity above ``first_threshold``
+    - ``last_name_same_first_variant`` (0.7): identical last name AND first
+      names either match exactly or one is a prefix of the other (Tom/Thomas)
 
     Feed each pair into ``POST /contacts/merge`` when you've confirmed they're
     the same person.
@@ -140,7 +139,6 @@ def list_duplicates(
         min_score=min_score,
         limit=limit,
         name_threshold=name_threshold,
-        first_threshold=first_threshold,
     )
     return {"items": serialize_duplicates(pairs), "count": len(pairs)}
 
