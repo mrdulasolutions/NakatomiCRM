@@ -3,7 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "alembic upgrade head && echo '=== migrations done, starting uvicorn on PORT='$PORT ===' && python -u -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info --access-log"
+startCommand = "export PYTHONUNBUFFERED=1 && echo '>>step1: env' && python -c 'import os; print(\"PORT=\"+os.environ.get(\"PORT\",\"unset\")+\" DB=\"+os.environ.get(\"DATABASE_URL\",\"unset\")[:50])' && echo '>>step2: alembic' && alembic upgrade head && echo '>>step3: uvicorn PORT='$PORT && exec python -u -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info --access-log"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 healthcheckPath = "/health"
