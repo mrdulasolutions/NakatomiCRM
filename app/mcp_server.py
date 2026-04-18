@@ -61,7 +61,7 @@ def _principal_from_ctx(ctx: Context) -> tuple[Principal, Any]:
     """Return (principal, db_session). Caller is responsible for closing the session."""
     token: str | None = None
     try:
-        req = ctx.request_context.request  # type: ignore[attr-defined]
+        req = ctx.request_context.request
         auth = req.headers.get("authorization") if req else None
         if auth and auth.lower().startswith("bearer "):
             token = auth.split(None, 1)[1].strip()
@@ -922,4 +922,4 @@ def build_asgi_app():
         return mcp.streamable_http_app()
     except AttributeError:
         # older SDKs
-        return mcp.sse_app()  # type: ignore[attr-defined]
+        return mcp.sse_app()
