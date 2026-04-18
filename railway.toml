@@ -7,4 +7,7 @@ startCommand = "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --po
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+# Generous budget for cold starts — alembic + psycopg handshake + uvicorn boot
+# on a small Railway instance can easily take 60s. The liveness check itself
+# is a single JSON return (<100ms) once the app is up.
+healthcheckTimeout = 300
