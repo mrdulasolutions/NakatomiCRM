@@ -59,6 +59,10 @@ def import_workspace(
         result = apply_import(db, p.workspace.id, req.doc, dry_run=req.dry_run)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    # apply_import releases its SAVEPOINT to the outer transaction but doesn't
+    # commit — the route owns the outer commit. For dry_run the savepoint was
+    # rolled back, so committing here is a no-op on write state.
+    db.commit()
     return ImportResponse(
         created=result.created,
         updated=result.updated,
