@@ -7,6 +7,22 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 
+```mermaid
+%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+flowchart LR
+    Agents[Claude / ChatGPT<br/>Cursor / Perplexity] --> Nakatomi
+    CLI[curl / scripts] --> Nakatomi
+    subgraph Nakatomi[Nakatomi]
+        direction TB
+        REST[REST API]
+        MCP[MCP server]
+        Worker[Webhook worker]
+    end
+    Nakatomi --> PG[(Postgres)]
+    Nakatomi --> Storage[(Files)]
+    Nakatomi -.->|optional| Memory[Memory<br/>connectors]
+```
+
 - **REST API** — every primitive (contacts, companies, deals, pipelines, activities, notes, tasks, files, relationships, timeline, webhooks) is a normal HTTP endpoint
 - **MCP server** — agents speak to the CRM natively at `/mcp` (streamable HTTP)
 - **Multi-tenant** — workspaces, users, per-workspace API keys
@@ -107,7 +123,9 @@ and just say **"nakatomi dashboard"** — the skill boots the stack and opens Ch
 
 ## Project files
 
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — visual tour of how the pieces wire together (component layout, webhook flow, ingest, export/import, memory cross-linking)
 - [`AgentLab.md`](./AgentLab.md) — recipes for solo agents, multi-agent swarms, harness setups, connector chains, and anti-patterns. Start here if you're wiring agents at Nakatomi.
+- [Wiki](https://github.com/mrdulasolutions/NakatomiCRM/wiki) — deep dives on every subsystem (auth, webhooks, memory, ingest, deployment, troubleshooting)
 - [`ROADMAP.md`](./ROADMAP.md) — what's shipped, what's in flight, what's next
 - [`ETHOS.md`](./ETHOS.md) — values the project is guided by
 - [`SECURITY.md`](./SECURITY.md) — responsible disclosure

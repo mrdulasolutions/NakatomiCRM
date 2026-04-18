@@ -186,27 +186,14 @@ leads overnight, AE agent moved 3 deals forward."* Transparent, auditable.
 **Goal:** one agent plans the campaign, another executes, third measures.
 All share the CRM as their working memory.
 
-```
-┌───────────────────┐   reads pipeline    ┌────────────────┐
-│ planner (1/day)   │───────────────────▶│ Nakatomi       │
-│ strategy, ICP     │                     │ (pipeline +    │
-└───────────────────┘                     │  contacts +    │
-                                          │  activities)   │
-                                          └───────┬────────┘
-                                                  │ cursor-paginated
-                                                  ▼
-                                  ┌───────────────────────┐
-                                  │ executor (N parallel) │
-                                  │ writes email via Gmail│
-                                  │ logs activity in CRM  │
-                                  └───────────────────────┘
-                                                  │
-                                                  ▼ deal.created / activity.created
-                                  ┌───────────────────────┐
-                                  │ analyst (1/hr)        │
-                                  │ webhook listener      │
-                                  │ writes rollups        │
-                                  └───────────────────────┘
+```mermaid
+%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+flowchart TB
+    Planner[Planner agent<br/>once per day<br/>strategy + ICP] -->|tags contacts by campaign| CRM[(Nakatomi<br/>pipeline + contacts + activities)]
+    CRM -->|cursor-paginated| Executor[Executor agent<br/>N parallel<br/>sends email via Gmail MCP<br/>logs activity in CRM]
+    Executor -->|log_activity| CRM
+    CRM -.->|webhook<br/>deal.created / activity.created| Analyst[Analyst agent<br/>hourly<br/>writes rollups]
+    Analyst -->|rollup| CRM
 ```
 
 **Key Nakatomi moves:**
@@ -231,26 +218,26 @@ All share the CRM as their working memory.
   probability, and writes back to the memory system so the next recall sees
   the latest state.
 
-```
-Researcher              Negotiator              Recorder
-    │                        │                      │
-    │ memory_recall          │                      │
-    │◀───────────────        │                      │
-    │                        │                      │
-    │ add_note(deal brief)   │                      │
-    │──────────────▶         │                      │
-    │                        │ get_contact,         │
-    │                        │ list_pipelines       │
-    │                        │ (drafts reply)       │
-    │                        │                      │
-    │                        │ send email via Gmail │
-    │                        │ log_activity(email)  │
-    │                        │────────────────────▶ │
-    │                        │                      │
-    │                        │                      │ update_deal(amount,stage)
-    │                        │                      │ memory_link(memory_id, deal)
-    │                        │                      │ if stage == won: memory
-    │                        │                      │   system sees the outcome
+```mermaid
+%%{init: {"look": "handDrawn", "theme": "neutral"}}%%
+sequenceDiagram
+    participant R as Researcher
+    participant N as Negotiator
+    participant Rec as Recorder
+    participant M as Memory connectors
+    participant C as Nakatomi
+    participant E as Email (Gmail MCP)
+
+    R->>M: memory_recall(company)
+    M-->>R: context bundle
+    R->>C: add_note(deal brief)
+    N->>C: get_contact + list_pipelines
+    Note over N: drafts reply
+    N->>E: send email
+    N->>C: log_activity(email_log)
+    Rec->>C: update_deal(stage, amount)
+    Rec->>M: memory_link(new_memory, deal)
+    Note over Rec,M: if stage = won,<br/>memory sees the outcome
 ```
 
 Each agent writes with its own API key. The workspace's timeline ends up
