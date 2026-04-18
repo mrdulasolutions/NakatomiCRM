@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -5,6 +6,21 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
     DATABASE_URL: str = "postgresql+psycopg://nakatomi:nakatomi@localhost:5432/nakatomi"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_db_url(cls, v: str) -> str:
+        """Railway + some cloud Postgres providers emit ``postgres://`` and
+        plain ``postgresql://``. We need ``postgresql+psycopg://`` so
+        SQLAlchemy picks the psycopg3 driver. Rewrite on read so the caller
+        doesn't have to care."""
+        if not isinstance(v, str) or "+" in v.split("://", 1)[0]:
+            return v
+        if v.startswith("postgres://"):
+            return "postgresql+psycopg://" + v[len("postgres://"):]
+        if v.startswith("postgresql://"):
+            return "postgresql+psycopg://" + v[len("postgresql://"):]
+        return v
     SECRET_KEY: str = "insecure-dev-key-change-me"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
