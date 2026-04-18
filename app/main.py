@@ -59,11 +59,80 @@ async def _lifespan(_app: FastAPI):
         webhook_delivery.stop_worker()
 
 
+# Tag metadata — shows up in /docs and /redoc as the section intros.
+# Keep each description tight (one sentence) and link out to the wiki for depth.
+_TAGS_METADATA = [
+    {"name": "auth", "description": "Signup, login, and current-user introspection."},
+    {"name": "workspace", "description": "Workspace settings, memberships, and API keys."},
+    {
+        "name": "contacts",
+        "description": "People in the CRM. Supports bulk upsert, soft delete, fuzzy duplicate detection (`/duplicates`), and duplicate merge (`/merge`).",
+    },
+    {"name": "companies", "description": "Organizations in the CRM. Mirrors the contacts shape."},
+    {"name": "pipelines", "description": "Sales pipelines and their stages."},
+    {
+        "name": "deals",
+        "description": "Deals moving through a pipeline. Timeline captures every stage change.",
+    },
+    {"name": "activities", "description": "Calls, meetings, email logs, and other timestamped touchpoints."},
+    {"name": "notes", "description": "Markdown notes attached to any entity."},
+    {"name": "tasks", "description": "Assignable tasks with due dates."},
+    {
+        "name": "relationships",
+        "description": "Typed directed edges between any two entities. BFS via `/neighbors`.",
+    },
+    {"name": "timeline", "description": "Append-only event stream per entity and per workspace."},
+    {"name": "webhooks", "description": "HMAC-signed subscriptions + durable delivery queue."},
+    {
+        "name": "files",
+        "description": "Chunked-streaming file upload/download with pluggable storage (`local` or S3).",
+    },
+    {
+        "name": "memory",
+        "description": "Cross-link CRM entities with external memory systems (DocDeploy, Supermemory, GBrain).",
+    },
+    {"name": "ingest", "description": "Normalize CSV, JSON, vCard, or text into CRM rows."},
+    {
+        "name": "custom-fields",
+        "description": "Workspace-scoped named-field registry. Values live in each row's `data` JSONB.",
+    },
+    {
+        "name": "export-import",
+        "description": "Portable JSON round-trip. The spine of the user-owns-their-data ethos.",
+    },
+    {
+        "name": "schema",
+        "description": "Machine-readable entity + field + event manifest for agent discovery.",
+    },
+    {
+        "name": "dashboard",
+        "description": "Local audit UI. Off by default; enable with `DASHBOARD_ENABLED=true`.",
+    },
+]
+
+
 app = FastAPI(
     title="Nakatomi CRM",
-    description="A headless CRM designed for AI agents (Claude, ChatGPT, Perplexity, ...).",
+    description=(
+        "A headless CRM designed for AI agents (Claude, ChatGPT, Perplexity, Cursor). "
+        "No human UI to click through — every primitive is a REST endpoint and also "
+        "available as an MCP tool at `/mcp`.\n\n"
+        "**Agent ergonomics baked in:** bulk upsert, cursor pagination, idempotency "
+        "keys, soft delete, relationship graph, durable webhooks, pluggable memory "
+        "connectors, workspace export/import, fuzzy duplicate detection and merge.\n\n"
+        "**Discovery:** `/schema` returns the full entity + event manifest; `/llms.txt` "
+        "is the LLM-discoverable pointer file; `/.well-known/agent.json` is the A2A "
+        "capability card."
+    ),
     version=__version__,
     lifespan=_lifespan,
+    contact={
+        "name": "Matt Dula",
+        "url": "https://github.com/mrdulasolutions/NakatomiCRM",
+        "email": "matt@mrdula.solutions",
+    },
+    license_info={"name": "MIT", "url": "https://github.com/mrdulasolutions/NakatomiCRM/blob/main/LICENSE"},
+    openapi_tags=_TAGS_METADATA,
 )
 
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()] or ["*"]
@@ -76,12 +145,41 @@ app.add_middleware(
 )
 
 
+_STATUS_TITLES = {
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    409: "Conflict",
+    410: "Gone",
+    422: "Unprocessable Entity",
+    429: "Too Many Requests",
+    500: "Internal Server Error",
+    503: "Service Unavailable",
+}
+
+
 @app.exception_handler(StarletteHTTPException)
-async def _http_error(_, exc: StarletteHTTPException):
+async def _http_error(request, exc: StarletteHTTPException):
+    """Return an RFC 9457 Problem Details body. We also include the legacy
+    ``error`` field for backward compatibility with pre-v0.2 clients — safe
+    to remove once we cut v1.0.
+    """
+    detail = str(exc.detail)
+    body = {
+        "type": f"https://github.com/mrdulasolutions/NakatomiCRM/wiki/Troubleshooting#{exc.status_code}",
+        "title": _STATUS_TITLES.get(exc.status_code, "Error"),
+        "status": exc.status_code,
+        "detail": detail,
+        "instance": str(request.url.path),
+        # legacy:
+        "error": detail,
+    }
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": str(exc.detail)},
+        content=body,
         headers=getattr(exc, "headers", None),
+        media_type="application/problem+json",
     )
 
 

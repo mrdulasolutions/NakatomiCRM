@@ -45,7 +45,10 @@ Skip to: [v1 Core](#v1--core-crm-shipped), [v1.1 Repo](#v11--repo-hygiene--agent
 - [x] `docs/MCP.md` — MCP usage for Claude, Cursor, custom connectors
 - [x] Claude Code skill: `nakatomi-crm` — core usage patterns for agents
 - [x] Claude Code skill: `nakatomi-dashboard` — "nakatomi dashboard" launch flow
-- [ ] OpenAPI hardening — richer `summary`/`examples` per route, tags, problem+json
+- [x] OpenAPI hardening — tag metadata (20 tags with one-line descriptions), app
+      contact/license/description, RFC 9457 Problem Details error responses
+      (with legacy `error` field kept for pre-v0.2 clients). Per-route
+      response examples still a stretch follow-up.
 - [ ] Tests: pytest + httpx against an ephemeral Postgres
 - [ ] Ruff + mypy configured in `pyproject.toml`
 - [ ] CI: GitHub Actions for lint/test + build/push Docker image
