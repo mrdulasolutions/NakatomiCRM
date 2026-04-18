@@ -3,12 +3,16 @@
 Revision ID: 0005_custom_fields
 Revises: 0004_api_key_rate_limit
 Create Date: 2026-04-18
+
+Idempotent: fresh installs already have this table from 0001's create_all.
+Upgrades from v0.1.0 need it created here.
 """
 
 from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
 
@@ -18,7 +22,13 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _tables() -> set[str]:
+    return set(inspect(op.get_bind()).get_table_names())
+
+
 def upgrade() -> None:
+    if "custom_field_definitions" in _tables():
+        return
     op.create_table(
         "custom_field_definitions",
         sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
@@ -60,5 +70,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_cfd_ws_et", table_name="custom_field_definitions")
+    if "custom_field_definitions" not in _tables():
+        return
+    existing_indexes = {ix["name"] for ix in inspect(op.get_bind()).get_indexes("custom_field_definitions")}
+    if "ix_cfd_ws_et" in existing_indexes:
+        op.drop_index("ix_cfd_ws_et", table_name="custom_field_definitions")
     op.drop_table("custom_field_definitions")

@@ -17,10 +17,11 @@ class Settings(BaseSettings):
         if not isinstance(v, str) or "+" in v.split("://", 1)[0]:
             return v
         if v.startswith("postgres://"):
-            return "postgresql+psycopg://" + v[len("postgres://"):]
+            return "postgresql+psycopg://" + v[len("postgres://") :]
         if v.startswith("postgresql://"):
-            return "postgresql+psycopg://" + v[len("postgresql://"):]
+            return "postgresql+psycopg://" + v[len("postgresql://") :]
         return v
+
     SECRET_KEY: str = "insecure-dev-key-change-me"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
