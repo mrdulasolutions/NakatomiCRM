@@ -25,6 +25,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("MEMORY_CONNECTORS", "")  # disable real memory calls in tests
 os.environ.setdefault("DASHBOARD_ENABLED", "false")
+os.environ.setdefault("WEBHOOK_WORKER_ENABLED", "false")  # tests drive the worker directly
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402

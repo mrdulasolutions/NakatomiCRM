@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.deps import Principal
 from app.models import AuditLog, EntityType, MemoryLink, TimelineEvent, Webhook
 from app.services.memory import enabled_connectors
-from app.services.webhook_delivery import deliver_webhook
+from app.services.webhook_delivery import enqueue as enqueue_webhook
 
 log = logging.getLogger("nakatomi.events")
 
@@ -69,6 +69,8 @@ def emit(
             metadata={"payload": payload},
         )
 
+    # Durable webhook delivery — enqueue a pending row per subscriber; the
+    # background worker picks them up. Failures are persisted, not lost.
     hooks = db.scalars(
         select(Webhook).where(
             Webhook.workspace_id == principal.workspace.id,
@@ -78,8 +80,9 @@ def emit(
     for hook in hooks:
         if hook.events and event_type not in hook.events and "*" not in hook.events:
             continue
-        background.add_task(
-            deliver_webhook,
+        enqueue_webhook(
+            db,
+            workspace_id=principal.workspace.id,
             webhook_id=hook.id,
             event_type=event_type,
             payload={

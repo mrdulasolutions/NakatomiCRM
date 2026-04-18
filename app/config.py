@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     WEBHOOK_TIMEOUT_SECONDS: int = 10
     WEBHOOK_MAX_RETRIES: int = 3
+    # Disable in tests so process_pending_deliveries() calls don't race the worker.
+    WEBHOOK_WORKER_ENABLED: bool = True
 
     CORS_ORIGINS: str = "*"
 

@@ -429,20 +429,37 @@ class Webhook(Base, TimestampMixin):
 
 
 class WebhookDelivery(Base):
+    """Durable per-attempt record for webhook deliveries.
+
+    On emit we insert a row with ``status="pending"`` and ``next_attempt_at=now()``.
+    The background worker (``app/services/webhook_delivery.py``) polls for pending
+    rows whose ``next_attempt_at`` has passed and attempts HTTP delivery. On a 2xx
+    it flips to ``succeeded``; on failure it bumps ``attempts`` and schedules the
+    next retry with exponential backoff, or marks ``dead`` after the max.
+    """
+
     __tablename__ = "webhook_deliveries"
-    __table_args__ = (Index("ix_wd_webhook_time", "webhook_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_wd_webhook_time", "webhook_id", "created_at"),
+        Index("ix_wd_status_next", "status", "next_attempt_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     webhook_id: Mapped[str] = mapped_column(ForeignKey("webhooks.id", ondelete="CASCADE"), index=True)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False, index=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status_code: Mapped[int | None] = mapped_column(Integer)
     response_body: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     succeeded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now, nullable=False
+    )
 
 
 # ---------------------------------------------------------------------------

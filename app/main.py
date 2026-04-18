@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -32,6 +33,7 @@ from app.routers import (
 from app.routers import (
     schema as schema_router,
 )
+from app.services import webhook_delivery
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -40,10 +42,26 @@ logging.basicConfig(
 log = logging.getLogger("nakatomi")
 
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Start the durable webhook-delivery worker for the lifetime of the process.
+
+    Tests disable the worker via ``WEBHOOK_WORKER_ENABLED=false`` so they can
+    drive ``process_pending_deliveries()`` deterministically.
+    """
+    if settings.WEBHOOK_WORKER_ENABLED:
+        webhook_delivery.start_worker()
+    try:
+        yield
+    finally:
+        webhook_delivery.stop_worker()
+
+
 app = FastAPI(
     title="Nakatomi CRM",
     description="A headless CRM designed for AI agents (Claude, ChatGPT, Perplexity, ...).",
     version=__version__,
+    lifespan=_lifespan,
 )
 
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()] or ["*"]
