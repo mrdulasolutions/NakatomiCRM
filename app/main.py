@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -47,17 +47,30 @@ log = logging.getLogger("nakatomi")
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    """Start the durable webhook-delivery worker for the lifetime of the process.
+    """Start the webhook-delivery worker AND the FastMCP session manager.
 
-    Tests disable the worker via ``WEBHOOK_WORKER_ENABLED=false`` so they can
-    drive ``process_pending_deliveries()`` deterministically.
+    FastMCP's streamable_http_app needs ``session_manager.run()`` active for
+    the lifetime of the process — without it, incoming MCP requests crash
+    with "Task group is not initialized". Mounting the ASGI app alone is
+    not enough; the parent app has to enter its lifespan too.
+
+    Tests disable the webhook worker via ``WEBHOOK_WORKER_ENABLED=false``
+    so they can drive ``process_pending_deliveries()`` deterministically.
     """
-    if settings.WEBHOOK_WORKER_ENABLED:
-        webhook_delivery.start_worker()
-    try:
-        yield
-    finally:
-        webhook_delivery.stop_worker()
+    async with AsyncExitStack() as stack:
+        try:
+            from app.mcp_server import mcp as _mcp_server
+
+            await stack.enter_async_context(_mcp_server.session_manager.run())
+        except Exception as exc:  # noqa: BLE001
+            log.warning("MCP session manager failed to start: %s", exc)
+
+        if settings.WEBHOOK_WORKER_ENABLED:
+            webhook_delivery.start_worker()
+        try:
+            yield
+        finally:
+            webhook_delivery.stop_worker()
 
 
 # Tag metadata — shows up in /docs and /redoc as the section intros.
