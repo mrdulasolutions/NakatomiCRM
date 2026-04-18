@@ -22,6 +22,7 @@ Nakatomi exposes an MCP server at `/mcp` using streamable HTTP transport.
 | `search_companies` | Substring or domain search |
 | `create_company` | Create a new company |
 | `list_pipelines` | List pipelines + stages for deal creation |
+| `create_pipeline` | Create a pipeline and its stages in one call (for fresh installs or HubSpot-style imports) |
 | `create_deal` | Create a deal; picks default pipeline + first stage if unspecified |
 | `move_deal_stage` | Move a deal to a stage by slug (auto-sets status on won/lost stages) |
 | `log_activity` | Log a call/meeting/email/etc. on any entity |

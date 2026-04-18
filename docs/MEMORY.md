@@ -26,8 +26,9 @@ DOCDEPLOY_BASE_URL=https://x402.docdeploy.io
 SUPERMEMORY_API_KEY=...
 SUPERMEMORY_BASE_URL=https://api.supermemory.ai
 
-# GBrain — expects a running GBrain MCP server (stdio or HTTP).
-# Point this at the HTTP MCP URL you deploy per the GBrain docs.
+# GBrain — expects a remote streamable-HTTP MCP endpoint (e.g. `gbrain serve`
+# behind an ngrok tunnel, per https://github.com/garrytan/gbrain/blob/master/docs/mcp/DEPLOY.md).
+# GBRAIN_TOKEN is minted with `bun run src/commands/auth.ts create <label>`.
 GBRAIN_MCP_URL=https://your-brain.example.com/mcp
 GBRAIN_TOKEN=...
 ```
@@ -106,14 +107,15 @@ reference — both are ~100 lines of straightforward HTTP.
 
 | Adapter | Status | Notes |
 | --- | --- | --- |
-| `docdeploy` | stub | x402 pay-per-call memory. See https://www.docdeploy.io. |
-| `supermemory` | stub | REST API. See https://supermemory.ai. |
-| `gbrain` | stub | MCP-first self-wiring brain. See https://github.com/garrytan/gbrain. Adapter talks to the remote MCP endpoint. |
+| `docdeploy` | shipped | x402 pay-per-call memory. REST client via httpx. See https://www.docdeploy.io. |
+| `supermemory` | shipped | REST API (`/v3/memories`, `/v3/search`) via httpx. See https://supermemory.ai. |
+| `gbrain` | shipped | MCP-first self-wiring brain. Speaks streamable-HTTP MCP to `${GBRAIN_MCP_URL}` with a fresh session per call; uses `put_page` (markdown + YAML frontmatter) and `query` (hybrid search). See https://github.com/garrytan/gbrain. |
 | `memcastle` | planned | API shape not yet documented. |
 
-The stubs make real HTTP calls but the request/response shapes are based on
-public docs at time of writing. You will likely need to adjust them for your
-account's exact API version.
+The three shipped adapters make real outbound calls but the request/response
+shapes follow public docs at time of writing. DocDeploy and Supermemory may
+evolve their APIs; GBrain's MCP tool surface is pinned to the upstream
+`operations.ts` (stable tool names since v0.7).
 
 ## Conflict policy
 
