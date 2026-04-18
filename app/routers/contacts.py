@@ -7,11 +7,20 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal
-from app.models import Contact, EntityType
-from app.schemas import BulkUpsertResult, ContactIn, ContactOut, ContactPatch, Page
+from app.deps import Pagination, Principal, get_pagination, get_principal, require_role
+from app.models import Contact, EntityType, MemberRole
+from app.schemas import (
+    BulkUpsertResult,
+    ContactIn,
+    ContactMergeRequest,
+    ContactMergeResponse,
+    ContactOut,
+    ContactPatch,
+    Page,
+)
 from app.services.diffs import compute_changes
 from app.services.events import emit
+from app.services.merge import merge_contacts
 from app.services.pagination import apply_cursor, encode_cursor
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
@@ -218,3 +227,61 @@ def bulk_upsert(
             )
     db.commit()
     return BulkUpsertResult(created=created, updated=updated, ids=ids)
+
+
+@router.post("/merge", response_model=ContactMergeResponse)
+def merge_endpoint(
+    req: ContactMergeRequest,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+) -> ContactMergeResponse:
+    """Merge two duplicate contacts — owner/admin only because it's destructive.
+
+    The ``winner_id`` contact is kept and enriched with non-conflicting fields
+    from the ``loser_id``; the loser is soft-deleted with ``data.merged_into``
+    pointing at the winner. All references (deal.primary_contact_id,
+    relationships, notes/tasks/activities/files/memory_links) are rewritten.
+
+    Pass ``dry_run=true`` to preview. Use ``field_preferences`` to override the
+    default "winner wins unless null" rule per field:
+
+        {"field_preferences": {"title": "loser"}}
+    """
+    try:
+        result = merge_contacts(
+            db,
+            p.workspace.id,
+            winner_id=req.winner_id,
+            loser_id=req.loser_id,
+            field_preferences=req.field_preferences,
+            dry_run=req.dry_run,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not req.dry_run:
+        emit(
+            db,
+            p,
+            event_type="contact.merged",
+            entity_type=EntityType.contact,
+            entity_id=req.winner_id,
+            payload={
+                "loser_id": req.loser_id,
+                "changes": result.changes,
+                "references_rewritten": result.references_rewritten,
+            },
+            background=background,
+        )
+        db.commit()
+    else:
+        db.rollback()
+    return ContactMergeResponse(
+        winner_id=req.winner_id,
+        loser_id=req.loser_id,
+        changes=result.changes,
+        references_rewritten=result.references_rewritten,
+        warnings=result.warnings,
+        dry_run=req.dry_run,
+    )

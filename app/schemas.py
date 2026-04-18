@@ -522,6 +522,22 @@ class CustomFieldPatch(BaseModel):
     description: str | None = None
 
 
+class ContactMergeRequest(BaseModel):
+    winner_id: str
+    loser_id: str
+    field_preferences: dict[str, str] | None = None
+    dry_run: bool = False
+
+
+class ContactMergeResponse(BaseModel):
+    winner_id: str
+    loser_id: str
+    changes: dict[str, dict[str, Any]]
+    references_rewritten: dict[str, int]
+    warnings: list[str]
+    dry_run: bool
+
+
 class ImportRequest(BaseModel):
     doc: dict
     dry_run: bool = False

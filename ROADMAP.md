@@ -135,7 +135,10 @@ job: let a human confirm at a glance what the agents did last night.
 - [x] Streaming file upload + download (chunked SHA at upload, StreamingResponse on download, Storage.open() + iter_chunks helper on the interface)
 - [ ] pgvector (optional) for workspaces that prefer server-side semantic search
 - [x] Row-level audit diffs (field-level before/after on every PATCH — stored in the timeline event's `changes` payload; captured via SQLAlchemy session history before flush)
-- [ ] Merge: "resolve duplicate contacts" flow
+- [x] Merge: "resolve duplicate contacts" flow (`POST /contacts/merge` with
+      dry_run + field_preferences; rewrites deal/note/task/activity/file/
+      relationship/memory_link FKs from loser → winner; emits `contact.merged`
+      with the full field diff and rewrite counts)
 - [ ] SSO (Google / GitHub) for human logins
 - [ ] OpenTelemetry tracing
 - [x] Export: full workspace dump as a single JSON doc (`GET /export`); round-trip
