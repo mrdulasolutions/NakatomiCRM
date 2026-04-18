@@ -522,6 +522,19 @@ class CustomFieldPatch(BaseModel):
     description: str | None = None
 
 
+class ImportRequest(BaseModel):
+    doc: dict
+    dry_run: bool = False
+
+
+class ImportResponse(BaseModel):
+    created: dict[str, int]
+    updated: dict[str, int]
+    skipped: dict[str, int]
+    warnings: list[str]
+    dry_run: bool
+
+
 class CustomFieldOut(ORMBase):
     id: str
     entity_type: EntityType

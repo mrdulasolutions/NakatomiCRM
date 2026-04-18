@@ -20,6 +20,7 @@ from app.routers import (
     custom_fields,
     dashboard,
     deals,
+    exports,
     files,
     ingest,
     memory,
@@ -123,6 +124,7 @@ app.include_router(files.router)
 app.include_router(memory.router)
 app.include_router(ingest.router)
 app.include_router(custom_fields.router)
+app.include_router(exports.router)
 app.include_router(schema_router.router)
 app.include_router(dashboard.router)
 

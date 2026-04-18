@@ -122,17 +122,21 @@ job: let a human confirm at a glance what the agents did last night.
 
 ## v2 — Later
 
-- [ ] Custom fields UI (schema-defined per workspace; fields live in `data` JSONB today)
+- [x] Custom fields v1 (named fields per entity type, declared in
+      `custom_field_definitions`; values still in `data` JSONB; no runtime
+      validation yet — agents can see the schema via `GET /custom-fields`)
 - [ ] Saved views / queries
-- [ ] Durable webhook retry (worker + queue — currently BackgroundTasks)
-- [ ] Rate limiting per API key
+- [x] Durable webhook retry (worker + queue — in-process, SKIP LOCKED, backoff schedule, marks dead after max retries)
+- [x] Rate limiting per API key (fixed 60s window, per-key override, Retry-After header on 429)
 - [ ] Streaming file upload (currently buffered in memory)
 - [ ] pgvector (optional) for workspaces that prefer server-side semantic search
 - [ ] Row-level audit diffs (field-level before/after)
 - [ ] Merge: "resolve duplicate contacts" flow
 - [ ] SSO (Google / GitHub) for human logins
 - [ ] OpenTelemetry tracing
-- [ ] Export: full workspace dump (JSON + files tarball)
+- [x] Export: full workspace dump as a single JSON doc (`GET /export`); round-trip
+      re-import via `POST /import` with merge-mode upsert, id-translation for
+      polymorphic refs, and `dry_run`. File bytes are a v2 extension (tarball).
 - [ ] Import from legacy CRMs (Salesforce, HubSpot, Pipedrive, Attio) — one-shot migrations
 
 ---
