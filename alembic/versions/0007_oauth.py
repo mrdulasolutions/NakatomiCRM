@@ -23,8 +23,26 @@ def _tables() -> set[str]:
     return set(inspect(op.get_bind()).get_table_names())
 
 
+def _cols(table: str) -> set[str]:
+    return {c["name"] for c in inspect(op.get_bind()).get_columns(table)}
+
+
 def upgrade() -> None:
     tables = _tables()
+
+    # ApiKey.data — OAuth refresh tokens stash their client_id + scope here.
+    if "data" not in _cols("api_keys"):
+        with op.batch_alter_table("api_keys") as batch:
+            batch.add_column(
+                sa.Column(
+                    "data",
+                    postgresql.JSONB(),
+                    nullable=False,
+                    server_default=sa.text("'{}'::jsonb"),
+                )
+            )
+        with op.batch_alter_table("api_keys") as batch:
+            batch.alter_column("data", server_default=None)
 
     if "oauth_clients" not in tables:
         op.create_table(

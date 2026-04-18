@@ -163,6 +163,10 @@ class ApiKey(Base, TimestampMixin):
     usage_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     usage_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # Free-form metadata. OAuth uses this to mark refresh tokens
+    # (``data.oauth.kind = "refresh"``) and carry their client_id + scope.
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
 
 # ---------------------------------------------------------------------------
 # Core CRM entities
