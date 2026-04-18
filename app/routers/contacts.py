@@ -108,6 +108,43 @@ def create_contact(
     return ContactOut.model_validate(c)
 
 
+# Static sub-paths must come before the ``{contact_id}`` route — FastAPI
+# matches in declaration order and would otherwise treat "duplicates" or
+# "merge" as a contact id and 500 on UUID parse.
+@router.get("/duplicates")
+def list_duplicates(
+    min_score: float = Query(0.7, ge=0.0, le=1.0),
+    limit: int = Query(100, ge=1, le=500),
+    name_threshold: float = Query(0.80, ge=0.0, le=1.0),
+    first_threshold: float = Query(0.70, ge=0.0, le=1.0),
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+) -> dict:
+    """Return likely duplicate contact pairs in the current workspace.
+
+    Each pair carries a ``score`` (0–1) and a ``reason`` explaining why they
+    matched:
+
+    - ``exact_email`` (1.0): same email, case-insensitive
+    - ``name_similar_same_company`` (0.8): full-name trigram similarity above
+      ``name_threshold`` AND both linked to the same company
+    - ``last_name_same_first_similar`` (0.7): identical last name AND first-name
+      similarity above ``first_threshold``
+
+    Feed each pair into ``POST /contacts/merge`` when you've confirmed they're
+    the same person.
+    """
+    pairs = find_duplicates(
+        db,
+        p.workspace.id,
+        min_score=min_score,
+        limit=limit,
+        name_threshold=name_threshold,
+        first_threshold=first_threshold,
+    )
+    return {"items": serialize_duplicates(pairs), "count": len(pairs)}
+
+
 @router.get("/{contact_id}", response_model=ContactOut)
 def get_contact(contact_id: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)):
     c = db.get(Contact, contact_id)
@@ -229,40 +266,6 @@ def bulk_upsert(
             )
     db.commit()
     return BulkUpsertResult(created=created, updated=updated, ids=ids)
-
-
-@router.get("/duplicates")
-def list_duplicates(
-    min_score: float = Query(0.7, ge=0.0, le=1.0),
-    limit: int = Query(100, ge=1, le=500),
-    name_threshold: float = Query(0.80, ge=0.0, le=1.0),
-    first_threshold: float = Query(0.70, ge=0.0, le=1.0),
-    db: Session = Depends(get_db),
-    p: Principal = Depends(get_principal),
-) -> dict:
-    """Return likely duplicate contact pairs in the current workspace.
-
-    Each pair carries a ``score`` (0–1) and a ``reason`` explaining why they
-    matched:
-
-    - ``exact_email`` (1.0): same email, case-insensitive
-    - ``name_similar_same_company`` (0.8): full-name trigram similarity above
-      ``name_threshold`` AND both linked to the same company
-    - ``last_name_same_first_similar`` (0.7): identical last name AND first-name
-      similarity above ``first_threshold``
-
-    Feed each pair into ``POST /contacts/merge`` when you've confirmed they're
-    the same person.
-    """
-    pairs = find_duplicates(
-        db,
-        p.workspace.id,
-        min_score=min_score,
-        limit=limit,
-        name_threshold=name_threshold,
-        first_threshold=first_threshold,
-    )
-    return {"items": serialize_duplicates(pairs), "count": len(pairs)}
 
 
 @router.post("/merge", response_model=ContactMergeResponse)
