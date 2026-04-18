@@ -83,6 +83,11 @@ class ApiKeyCreate(BaseModel):
     role: MemberRole = MemberRole.member
     expires_at: datetime | None = None
     user_id: str | None = None
+    rate_limit_per_minute: int | None = Field(
+        default=None,
+        ge=1,
+        description="override the global API_KEY_RATE_LIMIT_PER_MINUTE for this key",
+    )
 
 
 class ApiKeyOut(ORMBase):
@@ -93,6 +98,7 @@ class ApiKeyOut(ORMBase):
     last_used_at: datetime | None
     expires_at: datetime | None
     revoked_at: datetime | None
+    rate_limit_per_minute: int | None
     created_at: datetime
 
 

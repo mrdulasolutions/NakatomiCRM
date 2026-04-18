@@ -6,11 +6,13 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
 from app.models import (
     ApiKey,
@@ -47,6 +49,55 @@ def _auth_error(msg: str) -> HTTPException:
 
 def _forbidden(msg: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=msg)
+
+
+def _enforce_rate_limit(db: Session, key: ApiKey) -> None:
+    """Fixed 60-second window per key. 429 when the window's count exceeds the limit.
+
+    Per-key ``rate_limit_per_minute`` overrides the global default. Zero/None
+    disables the limit. Uses a single atomic UPDATE so two concurrent requests
+    can't both sneak under the cap.
+    """
+    limit = key.rate_limit_per_minute or settings.API_KEY_RATE_LIMIT_PER_MINUTE
+    if not limit or limit <= 0:
+        # Still bump last_used_at so operators can see activity.
+        key.last_used_at = datetime.now(UTC)
+        db.commit()
+        return
+
+    from sqlalchemy import text
+
+    row = db.execute(
+        text(
+            """
+            UPDATE api_keys
+               SET usage_window_start = CASE
+                     WHEN usage_window_start IS NULL
+                          OR now() - usage_window_start >= interval '60 seconds'
+                     THEN now()
+                     ELSE usage_window_start END,
+                   usage_count = CASE
+                     WHEN usage_window_start IS NULL
+                          OR now() - usage_window_start >= interval '60 seconds'
+                     THEN 1
+                     ELSE usage_count + 1 END,
+                   last_used_at = now()
+             WHERE id = :key_id
+             RETURNING usage_count, usage_window_start
+            """
+        ),
+        {"key_id": key.id},
+    ).one()
+    count, window_start = row
+    db.commit()
+    if count > limit:
+        # Retry-After: seconds remaining in this window.
+        remaining = 60 - int((datetime.now(UTC) - window_start).total_seconds())
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"rate limit exceeded ({limit}/min); try again shortly",
+            headers={"Retry-After": str(max(1, remaining))},
+        )
 
 
 def _looks_like_uuid(v: str) -> bool:
@@ -87,6 +138,9 @@ def get_principal(
         key = db.scalar(select(ApiKey).where(ApiKey.key_hash == digest))
         if not key or key.revoked_at is not None:
             raise _auth_error("invalid api key")
+        if key.expires_at and key.expires_at < datetime.now(UTC):
+            raise _auth_error("api key expired")
+        _enforce_rate_limit(db, key)
         ws = db.get(Workspace, key.workspace_id)
         if not ws:
             raise _auth_error("workspace not found")

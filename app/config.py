@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # Disable in tests so process_pending_deliveries() calls don't race the worker.
     WEBHOOK_WORKER_ENABLED: bool = True
 
+    # Per-API-key rate limit (fixed 60-second window). 0 disables the default;
+    # per-key overrides on ApiKey.rate_limit_per_minute still apply.
+    API_KEY_RATE_LIMIT_PER_MINUTE: int = 0
+
     CORS_ORIGINS: str = "*"
 
     # Memory connectors — comma-separated list; each adapter reads its own env vars

@@ -114,6 +114,7 @@ def create_key(
         key_hash=digest,
         role=req.role,
         expires_at=req.expires_at,
+        rate_limit_per_minute=req.rate_limit_per_minute,
     )
     db.add(key)
     db.commit()

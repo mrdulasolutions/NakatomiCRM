@@ -157,6 +157,12 @@ class ApiKey(Base, TimestampMixin):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Rate limiting — fixed 60-second window. ``rate_limit_per_minute`` overrides
+    # the global ``API_KEY_RATE_LIMIT_PER_MINUTE`` setting when non-null.
+    rate_limit_per_minute: Mapped[int | None] = mapped_column(Integer)
+    usage_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    usage_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
 
 # ---------------------------------------------------------------------------
 # Core CRM entities
