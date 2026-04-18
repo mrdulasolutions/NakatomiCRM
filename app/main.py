@@ -25,6 +25,7 @@ from app.routers import (
     ingest,
     memory,
     notes,
+    oauth,
     pipelines,
     relationships,
     tasks,
@@ -199,6 +200,12 @@ def llms_txt():
     if _LLMS_TXT.exists():
         return PlainTextResponse(_LLMS_TXT.read_text())
     return PlainTextResponse("Nakatomi — see /schema and /openapi.json")
+
+
+# OAuth routes MUST be registered before the /.well-known static mount below;
+# the dynamic oauth-authorization-server + oauth-protected-resource metadata
+# endpoints share that path prefix with the static agent.json.
+app.include_router(oauth.router)
 
 
 if _PUBLIC_DIR.exists():

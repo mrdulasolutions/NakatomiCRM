@@ -594,6 +594,51 @@ class IngestRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
 
+class OAuthClient(Base, TimestampMixin):
+    """An MCP client that registered itself via /oauth/register (RFC 7591).
+
+    Claude Desktop, Cursor, ChatGPT's custom connectors — each registers
+    once and gets back a client_id. Public clients (no secret) rely on
+    PKCE for the authorization-code flow.
+    """
+
+    __tablename__ = "oauth_clients"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    redirect_uris: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    # Optional — confidential clients authenticate with a secret; public
+    # clients (Claude Desktop, browser-based) use PKCE only.
+    client_secret_hash: Mapped[str | None] = mapped_column(String(255))
+    grant_types: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    response_types: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    scopes: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class OAuthCode(Base):
+    """Short-lived authorization code — single-use, ~60s TTL.
+
+    Stored as SHA-256 of the plaintext so a leaked DB snapshot doesn't
+    yield usable codes.
+    """
+
+    __tablename__ = "oauth_codes"
+    __table_args__ = (Index("ix_oauth_code_expires", "expires_at"),)
+
+    code_hash: Mapped[str] = mapped_column(String(128), primary_key=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("oauth_clients.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    redirect_uri: Mapped[str] = mapped_column(String(2048), nullable=False)
+    code_challenge: Mapped[str] = mapped_column(String(255), nullable=False)
+    code_challenge_method: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope: Mapped[str] = mapped_column(String(255), default="mcp", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+
+
 class IdempotencyKey(Base):
     __tablename__ = "idempotency_keys"
     __table_args__ = (
