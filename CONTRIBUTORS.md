@@ -7,7 +7,7 @@ Format: `- Name — short note on contribution (optional link)`
 
 ## Humans
 
-- *(you)*
+- Matt Dula <matt@mrdula.solutions>
 
 ## Agents (credit where it's due)
 

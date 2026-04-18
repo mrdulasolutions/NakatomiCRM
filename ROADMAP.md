@@ -70,9 +70,9 @@ entity and (optionally) trigger a CRM action.
 - [x] `MemoryConnector` abstract interface — `store_event`, `recall`, `link`
 - [x] Config via env: `MEMORY_CONNECTORS=docdeploy,supermemory` + per-adapter creds
 - [x] Adapter stubs:
-  - `docdeploy` — x402/MCP memory store, remember/recall API
-  - `supermemory` — REST add/search
-  - `gbrain` — TODO: point at docs & implement
+  - `docdeploy` — x402 pay-per-call memory (https://www.docdeploy.io)
+  - `supermemory` — REST add/search (https://supermemory.ai)
+  - `gbrain` — stub wired; MCP-first, needs `_call_tool` filled in for your deployment (https://github.com/garrytan/gbrain)
   - `memcastle` — TODO: point at docs & implement
 - [x] `POST /memory/recall` — fan out across configured connectors, merge results
 - [x] `POST /memory/link` — explicitly cross-link a CRM entity and an external memory id

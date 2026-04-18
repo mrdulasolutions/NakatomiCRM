@@ -6,8 +6,8 @@
   "url": "https://example.nakatomi.dev",
   "documentation_url": "/llms.txt",
   "contact": {
-    "name": "Nakatomi maintainers",
-    "email": "hello@nakatomi.dev"
+    "name": "Matt Dula",
+    "email": "matt@mrdula.solutions"
   },
   "authentication": {
     "schemes": ["bearer"],

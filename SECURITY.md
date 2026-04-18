@@ -9,7 +9,7 @@ Once we cut v1.0, this section will list a supported range.
 
 Please **do not** open a public GitHub issue for security problems.
 
-Email **security@nakatomi.dev** (or, for now while we're pre-release, open a
+Email **matt@mrdula.solutions** (or, for now while we're pre-release, open a
 GitHub Security Advisory: *Security → Report a vulnerability*). Include:
 
 - A description of the issue and its impact

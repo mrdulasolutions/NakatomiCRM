@@ -15,11 +15,13 @@ log = logging.getLogger("nakatomi.memory")
 def _builtins() -> dict[str, type[MemoryConnector]]:
     """Lazy-import to avoid loading every adapter module on startup."""
     from app.services.memory.adapters.docdeploy import DocDeployConnector
+    from app.services.memory.adapters.gbrain import GBrainConnector
     from app.services.memory.adapters.supermemory import SupermemoryConnector
 
     return {
         "docdeploy": DocDeployConnector,
         "supermemory": SupermemoryConnector,
+        "gbrain": GBrainConnector,
     }
 
 

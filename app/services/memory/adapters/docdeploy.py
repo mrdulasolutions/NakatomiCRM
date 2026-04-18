@@ -1,6 +1,6 @@
 """DocDeploy connector — pay-per-call encrypted memory on Base (x402).
 
-Docs: https://docdeploy.io  •  API base: https://x402.docdeploy.io
+Docs: https://www.docdeploy.io  •  API base: https://x402.docdeploy.io
 
 This is a best-effort adapter based on public docs. Update the request/response
 shapes once you have an account against the current API version.

@@ -18,13 +18,18 @@ systems. Instead, Nakatomi offers a small bidirectional bridge:
 `.env` (or Railway variables):
 
 ```
-MEMORY_CONNECTORS=docdeploy,supermemory
+MEMORY_CONNECTORS=docdeploy,supermemory,gbrain
 
 DOCDEPLOY_API_KEY=...
 DOCDEPLOY_BASE_URL=https://x402.docdeploy.io
 
 SUPERMEMORY_API_KEY=...
 SUPERMEMORY_BASE_URL=https://api.supermemory.ai
+
+# GBrain — expects a running GBrain MCP server (stdio or HTTP).
+# Point this at the HTTP MCP URL you deploy per the GBrain docs.
+GBRAIN_MCP_URL=https://your-brain.example.com/mcp
+GBRAIN_TOKEN=...
 ```
 
 Leave `MEMORY_CONNECTORS` empty to disable entirely. When disabled, all
@@ -101,10 +106,10 @@ reference — both are ~100 lines of straightforward HTTP.
 
 | Adapter | Status | Notes |
 | --- | --- | --- |
-| `docdeploy` | stub | x402 pay-per-call memory. See https://docdeploy.io. |
+| `docdeploy` | stub | x402 pay-per-call memory. See https://www.docdeploy.io. |
 | `supermemory` | stub | REST API. See https://supermemory.ai. |
-| `gbrain` | planned | Need to document the API shape. |
-| `memcastle` | planned | Need to document the API shape. |
+| `gbrain` | stub | MCP-first self-wiring brain. See https://github.com/garrytan/gbrain. Adapter talks to the remote MCP endpoint. |
+| `memcastle` | planned | API shape not yet documented. |
 
 The stubs make real HTTP calls but the request/response shapes are based on
 public docs at time of writing. You will likely need to adjust them for your

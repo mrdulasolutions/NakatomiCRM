@@ -35,6 +35,8 @@ services:
       DOCDEPLOY_BASE_URL: ${DOCDEPLOY_BASE_URL:-https://x402.docdeploy.io}
       SUPERMEMORY_API_KEY: ${SUPERMEMORY_API_KEY:-}
       SUPERMEMORY_BASE_URL: ${SUPERMEMORY_BASE_URL:-https://api.supermemory.ai}
+      GBRAIN_MCP_URL: ${GBRAIN_MCP_URL:-}
+      GBRAIN_TOKEN: ${GBRAIN_TOKEN:-}
     volumes:
       - nakatomi_files:/app/data
     ports:
