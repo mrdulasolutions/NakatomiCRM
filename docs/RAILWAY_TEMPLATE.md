@@ -22,13 +22,18 @@ as object storage — cross-region replication, multi-replica scale-out,
 no volume to baby-sit — swap to a **Railway Bucket**:
 
 1. In your Railway project, click **+ New → Bucket**. Name it `nakatomi-files` (or similar).
-2. Open the new Bucket service → **Variables** tab. Copy these four values:
-   - `BUCKET_NAME` → paste into `nakatomi.S3_BUCKET`
-   - `ACCESS_KEY_ID` → paste into `nakatomi.S3_ACCESS_KEY`
-   - `SECRET_ACCESS_KEY` → paste into `nakatomi.S3_SECRET_KEY`
-   - `ENDPOINT` → paste into `nakatomi.S3_ENDPOINT_URL`
-3. On the nakatomi service, set `STORAGE_BACKEND=s3`. Leave `S3_REGION=us-east-1` unless the bucket tells you otherwise.
-4. Redeploy. New uploads go to the Bucket; old files under `/app/data/files` stay on the volume (we don't migrate — copy them manually if needed).
+2. On the nakatomi service, paste these as **reference variables** (Railway auto-resolves them at deploy time — rotations flow through):
+   - `S3_BUCKET` → `${{ Nakatomi Files.BUCKET }}`
+   - `S3_ACCESS_KEY` → `${{ Nakatomi Files.ACCESS_KEY_ID }}`
+   - `S3_SECRET_KEY` → `${{ Nakatomi Files.SECRET_ACCESS_KEY }}`
+   - `S3_ENDPOINT_URL` → `${{ Nakatomi Files.ENDPOINT }}`
+   - `S3_REGION` → `${{ Nakatomi Files.REGION }}`
+3. Flip `STORAGE_BACKEND=s3` on the nakatomi service.
+4. Redeploy. New uploads go to the Bucket; old files under `/app/data/files` stay on the volume (no automatic migration — copy them over if you care).
+
+> Naming gotcha: Railway exposes the bucket's name under the key
+> `BUCKET` (not `BUCKET_NAME` or `NAME`). Use the reference form above
+> and you don't have to memorize it.
 
 Railway Buckets are S3-compatible under the hood, so Nakatomi's
 existing `s3` backend talks to them with zero code changes. No AWS
