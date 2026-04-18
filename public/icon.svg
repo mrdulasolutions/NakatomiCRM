@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Nakatomi Plaza">
+  <title>Nakatomi Plaza</title>
+  <rect width="512" height="512" fill="#0a0e1a"/>
+
+  <!-- Ground line -->
+  <rect x="48" y="462" width="416" height="4" fill="#1a2032"/>
+
+  <!-- Tower silhouette: stepped trapezoid echoing Fox Plaza -->
+  <g fill="#e8dfcf">
+    <!-- Base section (widest) -->
+    <polygon points="96,462 416,462 400,320 112,320"/>
+    <!-- Mid section -->
+    <polygon points="120,320 392,320 380,200 132,200"/>
+    <!-- Upper section -->
+    <polygon points="140,200 372,200 360,120 152,120"/>
+    <!-- Crown step 1 -->
+    <rect x="168" y="96" width="176" height="24"/>
+    <!-- Crown step 2 -->
+    <rect x="192" y="76" width="128" height="20"/>
+    <!-- Antenna -->
+    <rect x="252" y="40" width="8" height="36"/>
+    <circle cx="256" cy="36" r="5"/>
+  </g>
+
+  <!-- Window grid -->
+  <g fill="#0a0e1a">
+    <!-- Base section rows (y 336 → 452, 10 cols) -->
+    <g>
+      <rect x="124" y="340" width="16" height="14"/><rect x="152" y="340" width="16" height="14"/><rect x="180" y="340" width="16" height="14"/><rect x="208" y="340" width="16" height="14"/><rect x="236" y="340" width="16" height="14"/><rect x="264" y="340" width="16" height="14"/><rect x="292" y="340" width="16" height="14"/><rect x="320" y="340" width="16" height="14"/><rect x="348" y="340" width="16" height="14"/><rect x="376" y="340" width="16" height="14"/>
+      <rect x="124" y="364" width="16" height="14"/><rect x="152" y="364" width="16" height="14"/><rect x="180" y="364" width="16" height="14"/><rect x="208" y="364" width="16" height="14"/><rect x="236" y="364" width="16" height="14"/><rect x="264" y="364" width="16" height="14"/><rect x="292" y="364" width="16" height="14"/><rect x="320" y="364" width="16" height="14"/><rect x="348" y="364" width="16" height="14"/><rect x="376" y="364" width="16" height="14"/>
+      <rect x="124" y="388" width="16" height="14"/><rect x="152" y="388" width="16" height="14"/><rect x="180" y="388" width="16" height="14"/><rect x="208" y="388" width="16" height="14"/><rect x="236" y="388" width="16" height="14"/><rect x="264" y="388" width="16" height="14"/><rect x="292" y="388" width="16" height="14"/><rect x="320" y="388" width="16" height="14"/><rect x="348" y="388" width="16" height="14"/><rect x="376" y="388" width="16" height="14"/>
+      <rect x="124" y="412" width="16" height="14"/><rect x="152" y="412" width="16" height="14"/><rect x="180" y="412" width="16" height="14"/><rect x="208" y="412" width="16" height="14"/><rect x="236" y="412" width="16" height="14"/><rect x="264" y="412" width="16" height="14"/><rect x="292" y="412" width="16" height="14"/><rect x="320" y="412" width="16" height="14"/><rect x="348" y="412" width="16" height="14"/><rect x="376" y="412" width="16" height="14"/>
+      <rect x="124" y="436" width="16" height="14"/><rect x="152" y="436" width="16" height="14"/><rect x="180" y="436" width="16" height="14"/><rect x="208" y="436" width="16" height="14"/><rect x="236" y="436" width="16" height="14"/><rect x="264" y="436" width="16" height="14"/><rect x="292" y="436" width="16" height="14"/><rect x="320" y="436" width="16" height="14"/><rect x="348" y="436" width="16" height="14"/><rect x="376" y="436" width="16" height="14"/>
+    </g>
+    <!-- Mid section (y 216 → 308, 9 cols) -->
+    <g>
+      <rect x="144" y="220" width="16" height="14"/><rect x="172" y="220" width="16" height="14"/><rect x="200" y="220" width="16" height="14"/><rect x="228" y="220" width="16" height="14"/><rect x="256" y="220" width="16" height="14"/><rect x="284" y="220" width="16" height="14"/><rect x="312" y="220" width="16" height="14"/><rect x="340" y="220" width="16" height="14"/>
+      <rect x="144" y="244" width="16" height="14"/><rect x="172" y="244" width="16" height="14"/><rect x="200" y="244" width="16" height="14"/><rect x="228" y="244" width="16" height="14"/><rect x="256" y="244" width="16" height="14"/><rect x="284" y="244" width="16" height="14"/><rect x="312" y="244" width="16" height="14"/><rect x="340" y="244" width="16" height="14"/>
+      <rect x="144" y="268" width="16" height="14"/><rect x="172" y="268" width="16" height="14"/><rect x="200" y="268" width="16" height="14"/><rect x="228" y="268" width="16" height="14"/><rect x="256" y="268" width="16" height="14"/><rect x="284" y="268" width="16" height="14"/><rect x="312" y="268" width="16" height="14"/><rect x="340" y="268" width="16" height="14"/>
+      <rect x="144" y="292" width="16" height="14"/><rect x="172" y="292" width="16" height="14"/><rect x="200" y="292" width="16" height="14"/><rect x="228" y="292" width="16" height="14"/><rect x="256" y="292" width="16" height="14"/><rect x="284" y="292" width="16" height="14"/><rect x="312" y="292" width="16" height="14"/><rect x="340" y="292" width="16" height="14"/>
+    </g>
+    <!-- Upper section (y 132 → 188, 7 cols) -->
+    <g>
+      <rect x="164" y="136" width="16" height="14"/><rect x="192" y="136" width="16" height="14"/><rect x="220" y="136" width="16" height="14"/><rect x="248" y="136" width="16" height="14"/><rect x="276" y="136" width="16" height="14"/><rect x="304" y="136" width="16" height="14"/><rect x="332" y="136" width="16" height="14"/>
+      <rect x="164" y="160" width="16" height="14"/><rect x="192" y="160" width="16" height="14"/><rect x="220" y="160" width="16" height="14"/><rect x="248" y="160" width="16" height="14"/><rect x="276" y="160" width="16" height="14"/><rect x="304" y="160" width="16" height="14"/><rect x="332" y="160" width="16" height="14"/>
+    </g>
+    <!-- One lit window to hint at the heist -->
+    <rect x="276" y="292" width="16" height="14" fill="#f2c14e"/>
+  </g>
+</svg>
