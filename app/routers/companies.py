@@ -10,6 +10,7 @@ from app.db import get_db
 from app.deps import Pagination, Principal, get_pagination, get_principal
 from app.models import Company, EntityType
 from app.schemas import BulkUpsertResult, CompanyIn, CompanyOut, CompanyPatch, Page
+from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -104,13 +105,14 @@ def patch_company(
     updates = payload.model_dump(exclude_unset=True)
     for k, v in updates.items():
         setattr(c, k, v)
+    changes = compute_changes(c, list(updates.keys()))
     emit(
         db,
         p,
         event_type="company.updated",
         entity_type=EntityType.company,
         entity_id=c.id,
-        payload={"changes": list(updates.keys())},
+        payload={"changes": changes},
         background=background,
     )
     db.commit()

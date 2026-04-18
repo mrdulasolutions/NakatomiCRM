@@ -10,6 +10,7 @@ from app.db import get_db
 from app.deps import Pagination, Principal, get_pagination, get_principal
 from app.models import Contact, EntityType
 from app.schemas import BulkUpsertResult, ContactIn, ContactOut, ContactPatch, Page
+from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -118,13 +119,14 @@ def patch_contact(
     updates = payload.model_dump(exclude_unset=True)
     for k, v in updates.items():
         setattr(c, k, v)
+    changes = compute_changes(c, list(updates.keys()))
     emit(
         db,
         p,
         event_type="contact.updated",
         entity_type=EntityType.contact,
         entity_id=c.id,
-        payload={"changes": list(updates.keys())},
+        payload={"changes": changes},
         background=background,
     )
     db.commit()

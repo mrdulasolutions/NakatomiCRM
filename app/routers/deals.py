@@ -10,6 +10,7 @@ from app.db import get_db
 from app.deps import Pagination, Principal, get_pagination, get_principal
 from app.models import Deal, DealStatus, EntityType, Pipeline, Stage
 from app.schemas import DealIn, DealOut, DealPatch, OkResponse, Page
+from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -147,13 +148,16 @@ def patch_deal(
         setattr(d, k, v)
     if "status" in updates and updates["status"] in (DealStatus.won, DealStatus.lost):
         d.closed_at = datetime.now(UTC)
+    # Capture per-field before/after *before* commit — SA's history only has
+    # the old values while the session is still dirty.
+    changes = compute_changes(d, list(updates.keys()))
     emit(
         db,
         p,
         event_type="deal.updated",
         entity_type=EntityType.deal,
         entity_id=d.id,
-        payload={"changes": list(updates.keys())},
+        payload={"changes": changes},
         background=background,
     )
     if "stage_id" in updates and updates["stage_id"] != old_stage:

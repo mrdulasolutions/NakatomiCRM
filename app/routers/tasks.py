@@ -10,6 +10,7 @@ from app.db import get_db
 from app.deps import Pagination, Principal, get_pagination, get_principal
 from app.models import EntityType, Task, TaskStatus
 from app.schemas import OkResponse, Page, TaskIn, TaskOut, TaskPatch
+from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -103,13 +104,14 @@ def patch_task(
         setattr(t, k, v)
     if updates.get("status") == TaskStatus.done and not t.completed_at:
         t.completed_at = datetime.now(UTC)
+    changes = compute_changes(t, list(updates.keys()))
     emit(
         db,
         p,
         event_type="task.updated",
         entity_type=EntityType.task,
         entity_id=t.id,
-        payload={"changes": list(updates.keys())},
+        payload={"changes": changes},
         background=background,
     )
     db.commit()

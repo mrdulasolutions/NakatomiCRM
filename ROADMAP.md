@@ -134,7 +134,7 @@ job: let a human confirm at a glance what the agents did last night.
 - [x] Rate limiting per API key (fixed 60s window, per-key override, Retry-After header on 429)
 - [x] Streaming file upload + download (chunked SHA at upload, StreamingResponse on download, Storage.open() + iter_chunks helper on the interface)
 - [ ] pgvector (optional) for workspaces that prefer server-side semantic search
-- [ ] Row-level audit diffs (field-level before/after)
+- [x] Row-level audit diffs (field-level before/after on every PATCH — stored in the timeline event's `changes` payload; captured via SQLAlchemy session history before flush)
 - [ ] Merge: "resolve duplicate contacts" flow
 - [ ] SSO (Google / GitHub) for human logins
 - [ ] OpenTelemetry tracing
