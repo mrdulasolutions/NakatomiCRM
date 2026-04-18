@@ -52,12 +52,25 @@ def test_merge_scalar_fields_winner_wins_unless_null(client, workspace):
 
 def test_merge_rewrites_foreign_keys(client, workspace):
     h = workspace["headers"]
+
+    # Deals need a pipeline; make a minimal default one up front.
+    client.post(
+        "/pipelines",
+        headers=h,
+        json={
+            "name": "Sales",
+            "slug": "sales",
+            "is_default": True,
+            "stages": [{"name": "Lead", "slug": "lead", "position": 0}],
+        },
+    )
+
     winner = _mk_contact(client, h, first_name="Ada", email="ada@example.com")
     loser = _mk_contact(client, h, first_name="Ada L.", email="ada@old.example")
     co = client.post("/companies", headers=h, json={"name": "Acme"}).json()
 
     # Wire every kind of reference to the loser.
-    deal = client.post(
+    deal_resp = client.post(
         "/deals",
         headers=h,
         json={
@@ -65,7 +78,9 @@ def test_merge_rewrites_foreign_keys(client, workspace):
             "primary_contact_id": loser["id"],
             "company_id": co["id"],
         },
-    ).json()
+    )
+    assert deal_resp.status_code == 201, deal_resp.text
+    deal = deal_resp.json()
     client.post(
         "/notes",
         headers=h,
