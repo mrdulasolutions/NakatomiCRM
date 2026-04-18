@@ -13,6 +13,29 @@ fallback is still in git history if we ever need to go back to it.
 
 ---
 
+## Upgrading file storage to Railway Bucket (optional)
+
+The template provisions Nakatomi with `STORAGE_BACKEND=local`, writing
+uploads to `/app/data/files` on a mounted volume. That's durable
+enough for most deploys. If you want the same durability guarantees
+as object storage — cross-region replication, multi-replica scale-out,
+no volume to baby-sit — swap to a **Railway Bucket**:
+
+1. In your Railway project, click **+ New → Bucket**. Name it `nakatomi-files` (or similar).
+2. Open the new Bucket service → **Variables** tab. Copy these four values:
+   - `BUCKET_NAME` → paste into `nakatomi.S3_BUCKET`
+   - `ACCESS_KEY_ID` → paste into `nakatomi.S3_ACCESS_KEY`
+   - `SECRET_ACCESS_KEY` → paste into `nakatomi.S3_SECRET_KEY`
+   - `ENDPOINT` → paste into `nakatomi.S3_ENDPOINT_URL`
+3. On the nakatomi service, set `STORAGE_BACKEND=s3`. Leave `S3_REGION=us-east-1` unless the bucket tells you otherwise.
+4. Redeploy. New uploads go to the Bucket; old files under `/app/data/files` stay on the volume (we don't migrate — copy them manually if needed).
+
+Railway Buckets are S3-compatible under the hood, so Nakatomi's
+existing `s3` backend talks to them with zero code changes. No AWS
+account or R2 setup required — it's all inside Railway.
+
+---
+
 ## How to publish the template (one-time, Railway dashboard)
 
 1. Open the **Nakatomi** project in Railway (the one already running
