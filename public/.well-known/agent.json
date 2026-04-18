@@ -1,0 +1,130 @@
+{
+  "schema_version": "1.0",
+  "name": "Nakatomi CRM",
+  "description": "A headless, agent-native CRM. Stores contacts, companies, deals, activities, notes, tasks, files, relationships, and timeline events. Supports multi-tenant workspaces, API keys, webhooks, bulk upsert, soft delete, idempotency, and a pluggable memory-connector layer for cross-linking with external memory systems (DocDeploy, Supermemory, and others).",
+  "version": "0.1.0",
+  "url": "https://example.nakatomi.dev",
+  "documentation_url": "/llms.txt",
+  "contact": {
+    "name": "Nakatomi maintainers",
+    "email": "hello@nakatomi.dev"
+  },
+  "authentication": {
+    "schemes": ["bearer"],
+    "bearer_formats": ["api_key"],
+    "notes": "Use a workspace API key (prefix 'nk_') from POST /workspace/api-keys. Alternatively, a user JWT from POST /auth/login with an X-Workspace header."
+  },
+  "transports": [
+    {
+      "type": "http",
+      "base_url": "/",
+      "openapi_url": "/openapi.json"
+    },
+    {
+      "type": "mcp",
+      "base_url": "/mcp",
+      "protocol_version": "2024-11-05",
+      "streamable_http": true
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "contacts",
+      "description": "CRUD + bulk upsert + substring search over people records.",
+      "endpoints": {
+        "list": "GET /contacts",
+        "create": "POST /contacts",
+        "get": "GET /contacts/{id}",
+        "update": "PATCH /contacts/{id}",
+        "delete": "DELETE /contacts/{id}",
+        "bulk_upsert": "POST /contacts/bulk_upsert"
+      }
+    },
+    {
+      "name": "companies",
+      "description": "CRUD + bulk upsert + substring search over organization records.",
+      "endpoints": {
+        "list": "GET /companies",
+        "create": "POST /companies",
+        "bulk_upsert": "POST /companies/bulk_upsert"
+      }
+    },
+    {
+      "name": "deals",
+      "description": "Pipeline deals with status (open/won/lost), stages, amounts, and ownership.",
+      "endpoints": {
+        "list": "GET /deals",
+        "create": "POST /deals",
+        "update": "PATCH /deals/{id}"
+      }
+    },
+    {
+      "name": "activities",
+      "description": "Calls, meetings, email logs, and other timestamped touchpoints attached to any entity."
+    },
+    {
+      "name": "notes",
+      "description": "Markdown notes attached to any entity."
+    },
+    {
+      "name": "tasks",
+      "description": "Assignable tasks with due dates, attached to any entity."
+    },
+    {
+      "name": "files",
+      "description": "File uploads attached to any entity. Storage: local volume or S3-compatible."
+    },
+    {
+      "name": "relationships",
+      "description": "Typed directed edges between any two entities. Supports BFS neighbor queries up to depth 2.",
+      "endpoints": {
+        "list": "GET /relationships",
+        "neighbors": "GET /relationships/neighbors"
+      }
+    },
+    {
+      "name": "timeline",
+      "description": "Append-only event feed per entity and per workspace."
+    },
+    {
+      "name": "webhooks",
+      "description": "HMAC-signed webhook subscriptions. Retry with exponential backoff; delivery log is queryable."
+    },
+    {
+      "name": "memory",
+      "description": "Cross-link CRM entities with external memory systems (DocDeploy, Supermemory, …). Fan-out recall, bidirectional trace.",
+      "endpoints": {
+        "recall": "POST /memory/recall",
+        "link": "POST /memory/link",
+        "inbound_webhook": "POST /memory/webhook/{connector}"
+      }
+    },
+    {
+      "name": "ingest",
+      "description": "Accept CSV, vCard, JSON, or text; normalize and materialize into CRM entities.",
+      "endpoints": {
+        "ingest": "POST /ingest"
+      }
+    }
+  ],
+  "event_types": [
+    "contact.created", "contact.updated", "contact.deleted",
+    "company.created", "company.updated", "company.deleted",
+    "deal.created", "deal.updated", "deal.deleted",
+    "deal.stage_changed", "deal.won", "deal.lost",
+    "activity.created", "activity.deleted",
+    "note.created", "note.updated", "note.deleted",
+    "task.created", "task.updated", "task.deleted",
+    "relationship.created", "relationship.deleted",
+    "file.uploaded", "file.deleted",
+    "memory.linked", "memory.unlinked",
+    "ingest.completed"
+  ],
+  "safety": {
+    "data_residency": "operator-controlled",
+    "pii_handling": "stored in operator's database; not transmitted to third parties unless memory connectors are explicitly configured",
+    "soft_delete": true,
+    "audit_log": true,
+    "rate_limits": "not enforced at the API layer in v0.x"
+  }
+}

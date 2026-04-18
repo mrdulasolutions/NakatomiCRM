@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nakatomi
+      POSTGRES_PASSWORD: nakatomi
+      POSTGRES_DB: nakatomi
+    volumes:
+      - nakatomi_pg:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nakatomi -d nakatomi"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://nakatomi:nakatomi@postgres:5432/nakatomi
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-0123456789abcdef}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_PATH: /app/data/files
+      DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-false}
+      MEMORY_CONNECTORS: ${MEMORY_CONNECTORS:-}
+      DOCDEPLOY_API_KEY: ${DOCDEPLOY_API_KEY:-}
+      DOCDEPLOY_BASE_URL: ${DOCDEPLOY_BASE_URL:-https://x402.docdeploy.io}
+      SUPERMEMORY_API_KEY: ${SUPERMEMORY_API_KEY:-}
+      SUPERMEMORY_BASE_URL: ${SUPERMEMORY_BASE_URL:-https://api.supermemory.ai}
+    volumes:
+      - nakatomi_files:/app/data
+    ports:
+      - "8000:8000"
+
+volumes:
+  nakatomi_pg:
+  nakatomi_files:

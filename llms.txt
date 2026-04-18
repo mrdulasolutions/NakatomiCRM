@@ -1,0 +1,96 @@
+# Nakatomi CRM
+
+> Headless, agent-native CRM. REST API + MCP server. Multi-tenant, soft-delete,
+> idempotent, relationship-graph-aware, memory-connector-friendly. Deploy to
+> Railway, Fly, Docker, or any Dockerfile-capable host.
+
+Primary audience: LLM agents (Claude, ChatGPT, Perplexity, Cursor), plus the
+humans who operate those agents.
+
+## What an agent can do
+
+- Search, create, update, soft-delete contacts, companies, deals, activities,
+  notes, tasks, files
+- Move deals through pipeline stages
+- Attach notes, tasks, and activities to any entity
+- Build and query a typed relationship graph between any two entities
+- Read the append-only timeline and audit log for any entity or the whole workspace
+- Register webhooks for any event type (contact.created, deal.stage_changed, …)
+- Ingest records from CSV, vCard, JSON, or text blobs via `POST /ingest`
+- Recall across plugged-in memory systems (DocDeploy, Supermemory, …) via
+  `POST /memory/recall` and cross-link memories to CRM entities
+
+## Auth
+
+Agents should authenticate with a workspace API key:
+
+```
+Authorization: Bearer nk_<prefix>_<secret>
+```
+
+Users obtain keys via `POST /workspace/api-keys` after signing up at
+`POST /auth/signup`.
+
+## Transports
+
+- REST — full surface, documented via OpenAPI at `/docs` and `/openapi.json`
+- MCP — streamable HTTP at `/mcp`. Works with Claude Desktop custom connectors,
+  Claude Agent SDK, Cursor, and any MCP 1.0+ client. Same bearer-token auth.
+
+## Discovery
+
+- `/schema` — machine-readable entity + endpoint manifest
+- `/.well-known/agent.json` — A2A agent card
+- `/llms.txt` — this file
+- `/health` — liveness check
+
+## Key conventions
+
+- Every resource has `id`, `workspace_id`, optional `external_id` (unique per
+  workspace — great for upserts), `created_at`, `updated_at`, `deleted_at`,
+  and a free-form `data` JSONB column for fields not modeled natively.
+- Every list endpoint returns `{items, next_cursor, count}`. Pass
+  `?cursor=<next_cursor>` for the next page. Cursors are opaque base64.
+- Every mutation accepts an optional `Idempotency-Key` header; replays return
+  the original response rather than double-applying the operation.
+- Bulk upsert: `POST /contacts/bulk_upsert` and `POST /companies/bulk_upsert`.
+  Matches by `external_id` first, then by `email`/`domain`.
+- Soft delete: `DELETE /contacts/{id}` sets `deleted_at`. Pass `?hard=true` for
+  a real delete.
+
+## Events (webhook + timeline)
+
+```
+contact.created        company.created        deal.created
+contact.updated        company.updated        deal.updated
+contact.deleted        company.deleted        deal.deleted
+                                              deal.stage_changed
+                                              deal.won / deal.lost
+activity.created       activity.deleted
+note.created           note.updated           note.deleted
+task.created           task.updated           task.deleted
+relationship.created   relationship.deleted
+file.uploaded          file.deleted
+memory.linked          memory.unlinked
+ingest.completed
+```
+
+## Anti-patterns (do not do)
+
+- **Do not** hard-delete from an agent script. Use soft delete; the human
+  reviewer will decide.
+- **Do not** store PII in the `external_id` field — it's a business key, not
+  a payload field. Use `data` or named columns.
+- **Do not** loop without a `limit` and `cursor`. The default limit is 50;
+  max 500.
+- **Do not** reuse an `Idempotency-Key` for a different payload. You'll get a
+  409. Pick a new key per logical operation.
+
+## Links
+
+- Repository: https://github.com/your-org/nakatomi
+- Roadmap: /ROADMAP.md
+- Ethos: /ETHOS.md
+- MCP usage: /docs/MCP.md
+- Skill install: /docs/SKILLS.md
+- Security policy: /SECURITY.md
