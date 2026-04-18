@@ -519,6 +519,34 @@ class AuditLog(Base):
 # ---------------------------------------------------------------------------
 
 
+class CustomFieldDefinition(Base, TimestampMixin):
+    """Workspace-defined named fields on a CRM entity.
+
+    Values still live in each row's ``data`` JSONB column; this table is a
+    registry that lets operators declare which keys the workspace *expects*
+    to track, so agents can see them via ``GET /custom-fields`` and surface
+    them when creating or reading records.
+    """
+
+    __tablename__ = "custom_field_definitions"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "entity_type", "name", name="uq_cfd_ws_et_name"),
+        Index("ix_cfd_ws_et", "workspace_id", "entity_type"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    entity_type: Mapped[EntityType] = mapped_column(Enum(EntityType), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)  # snake_case JSONB key
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    # string | number | bool | date | url | email | select | text
+    field_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    default_value: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    options: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+
+
 class MemoryLink(Base, TimestampMixin):
     """Cross-link between a CRM entity and an external memory record."""
 

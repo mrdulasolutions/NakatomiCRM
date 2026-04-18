@@ -79,6 +79,7 @@ async def _http_error(_, exc: StarletteHTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": str(exc.detail)},
+        headers=getattr(exc, "headers", None),
     )
 
 

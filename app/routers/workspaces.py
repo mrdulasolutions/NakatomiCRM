@@ -119,9 +119,10 @@ def create_key(
     db.add(key)
     db.commit()
     db.refresh(key)
-    out = ApiKeyCreatedOut.model_validate(key)
-    out = out.model_copy(update={"key": full})
-    return out
+    # ApiKeyCreatedOut extends ApiKeyOut; the SA row has no ``key`` attr, so
+    # build the base and splice the plaintext key in once.
+    base = ApiKeyOut.model_validate(key).model_dump()
+    return ApiKeyCreatedOut(**base, key=full)
 
 
 @router.delete("/api-keys/{key_id}", response_model=OkResponse)
