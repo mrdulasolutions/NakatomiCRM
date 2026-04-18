@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fmrdulasolutions%2FNakatomiCRM)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/nakatomicrm)
 
 ```mermaid
 %%{init: {"look": "handDrawn", "theme": "dark"}}%%
@@ -61,7 +61,7 @@ uvicorn app.main:app --reload
 
 ### Railway (recommended)
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fmrdulasolutions%2FNakatomiCRM)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/nakatomicrm)
 
 Click the button above for a one-click deploy. Railway reads
 [`railway.toml`](./railway.toml) and the Dockerfile, provisions Postgres,

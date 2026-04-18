@@ -1,26 +1,15 @@
 # Railway 1-Click Template
 
-Nakatomi ships a Railway deploy button so anyone can spin up their own
-instance in under two minutes without touching a CLI.
+Live at **<https://railway.com/deploy/nakatomicrm>**. Clicking the
+Deploy button in [`README.md`](../README.md) drops the visitor onto
+that page with Postgres pre-provisioned, `SECRET_KEY` auto-generated,
+and every other env var pre-filled — so the install is literally
+*name your project → click Deploy*.
 
-There are **two** layers to this:
-
-1. **The generic button** — points at
-   `https://railway.com/new/template?template=<github-repo>`. Works
-   from the repo as-is; Railway reads `railway.toml` + the Dockerfile
-   and provisions the service. Users still have to add a Postgres
-   plugin and fill `SECRET_KEY` by hand.
-2. **The published template** — once Matt (or any maintainer) clicks
-   *Publish as Template* on a known-good deployment in the Railway
-   dashboard, Railway mints a share code (e.g. `nakatomi-crm`). The
-   button URL swaps to
-   `https://railway.com/template/<CODE>`, and clicking it pre-wires
-   Postgres, generates `SECRET_KEY`, and runs the Dockerfile in one
-   shot.
-
-The README button is currently wired to option (1). When option (2)
-is ready, swap the URL in [`README.md`](../README.md) — the badge
-image and anchor text stay the same.
+The button was previously wired to the generic
+`railway.com/new/template?template=<repo>` URL, which worked but
+required users to add Postgres and paste a `SECRET_KEY` by hand. That
+fallback is still in git history if we ever need to go back to it.
 
 ---
 
@@ -67,14 +56,9 @@ image and anchor text stay the same.
 7. Set the **healthcheck path** to `/health` and the **healthcheck
    timeout** to `300` (cold-start budget — see
    [§7 in DEPLOYMENT_LESSONS](./DEPLOYMENT_LESSONS.md#7--default-healthchecktimeout-30s-is-too-tight-for-cold-starts)).
-8. Publish. Copy the share code.
-9. Update `README.md`:
-
-   ```diff
-   - [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fmrdulasolutions%2FNakatomiCRM)
-   + [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/<SHARE_CODE>)
-   ```
-
+8. Publish. Railway issues a share URL — ours is
+   <https://railway.com/deploy/nakatomicrm>.
+9. Update the README button to point at that URL (done).
 10. Commit + push.
 
 ---

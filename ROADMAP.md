@@ -58,9 +58,9 @@ Skip to: [v1 Core](#v1--core-crm-shipped), [v1.1 Repo](#v11--repo-hygiene--agent
 - [x] `docker-compose.yml` — Postgres + app + volume, one `docker compose up`
 - [x] `install.sh` — detects Docker or Python; bootstraps a local workspace + key
 - [x] Railway one-click template button in `README.md`
-  - Generic button shipped (`railway.com/new/template?template=<repo>`).
-    Swap to a published share code once Matt clicks *Publish as Template*
-    on the live deployment — full playbook in
+  - Published at <https://railway.com/deploy/nakatomicrm>. Pre-wired
+    Postgres + generated `SECRET_KEY` + every env var defaulted, so
+    the install is literally *name your project → Deploy*. Playbook:
     [docs/RAILWAY_TEMPLATE.md](./docs/RAILWAY_TEMPLATE.md).
 - [ ] Fly.io / Render deploy recipes (stretch)
 - [ ] Homebrew tap (stretch) — `brew install nakatomi` wrapping the install script
