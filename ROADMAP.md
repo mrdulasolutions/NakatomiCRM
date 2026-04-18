@@ -1,5 +1,9 @@
 # Nakatomi Roadmap
 
+> **See also:** [AgentLab.md](./AgentLab.md) — recipes for real-world agent
+> deployments on Nakatomi (solo SDR, swarms, harness setups, connector chains).
+> The roadmap is *what we're building*; AgentLab is *how you'd use it*.
+
 Nakatomi is a headless, agent-native CRM. This roadmap is organized into phases. Each
 item has a status: `[ ]` todo, `[~]` in progress, `[x]` shipped. File references are
 clickable paths; bullets that name an adapter/connector have a short design note.
@@ -140,6 +144,42 @@ job: let a human confirm at a glance what the agents did last night.
 - [ ] Import from legacy CRMs (Salesforce, HubSpot, Pipedrive, Attio) — one-shot migrations
 
 ---
+
+## AgentLab expansion
+
+[AgentLab.md](./AgentLab.md) is a living document. These are patterns we want
+to add (as real, tested recipes — not hand-waving):
+
+- [ ] **Multi-tenant swarm manager** — one control-plane agent that mints
+      per-task API keys, monitors rate-limit pressure, rotates keys.
+- [ ] **Replay-on-failure** — a pattern where the durable webhook queue feeds a
+      "recovery agent" that reconciles CRM state with downstream systems after
+      an outage.
+- [ ] **Territory handoff agent** — cross-region transfers with complete
+      history preservation (see §8 skeleton).
+- [ ] **Compliance auditor** — reads the audit log, flags agents that bypass
+      soft-delete, don't set `external_id`, or mutate without reading the
+      timeline first. Useful when the swarm has grown beyond what one human
+      can review by hand.
+- [ ] **Benchmark harness** — scripts that drive a test workspace through
+      synthetic load (5 SDR agents, 200 leads/min) so operators can size
+      Postgres + pick a rate-limit budget before production.
+- [ ] **Cross-harness portability** — write the same skill in Claude Code,
+      Claude Agent SDK, Cursor, and ChatGPT Action form; measure which host
+      does which thing well.
+- [ ] **Post-mortem agent** — every Monday, reads last week's timeline, clusters
+      failed deals by root cause, writes a note on each, creates tasks.
+- [ ] **"Time-travel" agent** — reconstructs the state of a deal as of any
+      timestamp using the timeline event stream; helps a human reviewer
+      disagree precisely with a past agent decision.
+- [ ] **GTM pipeline optimizer** — reads stage conversion rates from the
+      timeline, suggests pipeline re-shapes, writes a proposal note a
+      human approves or declines.
+- [ ] **Data hygiene agent patterns** — dedupe by fuzzy name+company, merge
+      contacts across workspaces, prune stale relationships.
+
+PRs welcome. The goal is to cover the agent harnesses, the verticals, and
+the edge cases — not to collect generic demos.
 
 ## Non-goals (we explicitly won't build these)
 

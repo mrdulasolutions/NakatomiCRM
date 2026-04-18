@@ -13,6 +13,7 @@ how we signal import-side migrations when the schema evolves.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -45,6 +46,10 @@ def _serialize(obj: Any) -> dict:
         v = getattr(obj, col.name)
         if isinstance(v, datetime):
             out[col.name] = v.isoformat()
+        elif isinstance(v, Decimal):
+            # JSON has no Decimal — float is lossy but lossless enough for our
+            # ranges (deal amounts, probabilities, relationship strengths).
+            out[col.name] = float(v)
         elif hasattr(v, "value"):  # Enum
             out[col.name] = v.value
         else:

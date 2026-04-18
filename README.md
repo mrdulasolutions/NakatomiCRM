@@ -107,6 +107,7 @@ and just say **"nakatomi dashboard"** — the skill boots the stack and opens Ch
 
 ## Project files
 
+- [`AgentLab.md`](./AgentLab.md) — recipes for solo agents, multi-agent swarms, harness setups, connector chains, and anti-patterns. Start here if you're wiring agents at Nakatomi.
 - [`ROADMAP.md`](./ROADMAP.md) — what's shipped, what's in flight, what's next
 - [`ETHOS.md`](./ETHOS.md) — values the project is guided by
 - [`SECURITY.md`](./SECURITY.md) — responsible disclosure

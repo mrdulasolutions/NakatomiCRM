@@ -900,11 +900,15 @@ def _serialize(obj: Any) -> dict:
     """Flatten SQLAlchemy row into a JSON-safe dict."""
     if obj is None:
         return {}
+    from decimal import Decimal
+
     out: dict[str, Any] = {}
     for col in obj.__table__.columns:
         v = getattr(obj, col.name)
         if isinstance(v, datetime):
             out[col.name] = v.isoformat()
+        elif isinstance(v, Decimal):
+            out[col.name] = float(v)
         elif hasattr(v, "value"):  # enum
             out[col.name] = v.value
         else:
