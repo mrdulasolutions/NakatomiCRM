@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     # Memory connectors — comma-separated list; each adapter reads its own env vars
     MEMORY_CONNECTORS: str = ""
 
+    # Email + calendar background pollers. Disabled by default so a fresh
+    # deploy doesn't try to poll a misconfigured IMAP host on every loop.
+    EMAIL_POLLER_ENABLED: bool = False
+    EMAIL_POLL_INTERVAL_SECONDS: int = 300
+    CALENDAR_POLLER_ENABLED: bool = False
+    CALENDAR_POLL_INTERVAL_SECONDS: int = 600
+
     # Dashboard — local audit UI, off by default
     DASHBOARD_ENABLED: bool = False
 

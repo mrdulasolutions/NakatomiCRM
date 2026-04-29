@@ -279,6 +279,82 @@ class DealOut(ORMBase):
     updated_at: datetime
 
 
+# ---------- Email / Calendar ----------
+class EmailConfigIn(BaseModel):
+    """Either or both halves can be filled. Leave a half blank to skip
+    that direction (e.g. SMTP-only for agents that send but don't poll)."""
+
+    imap_host: str | None = None
+    imap_port: int | None = None
+    imap_user: str | None = None
+    imap_password: str | None = None
+    imap_folder: str = "INBOX"
+    imap_use_ssl: bool = True
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    from_address: str | None = None
+    from_name: str | None = None
+    is_active: bool = True
+
+
+class EmailConfigOut(ORMBase):
+    id: str
+    imap_host: str | None
+    imap_port: int | None
+    imap_user: str | None
+    imap_folder: str
+    imap_use_ssl: bool
+    smtp_host: str | None
+    smtp_port: int | None
+    smtp_user: str | None
+    smtp_use_tls: bool
+    from_address: str | None
+    from_name: str | None
+    is_active: bool
+    last_polled_at: datetime | None
+
+
+class EmailSendRequest(BaseModel):
+    to: list[str]
+    cc: list[str] = []
+    bcc: list[str] = []
+    subject: str
+    body: str
+    body_html: str | None = None
+    contact_id: str | None = None
+    deal_id: str | None = None
+
+
+class EmailSendResponse(BaseModel):
+    activity_id: str
+    sent_at: datetime
+    to: list[str]
+    subject: str
+
+
+class CalendarFeedIn(BaseModel):
+    name: str
+    ics_url: str = Field(min_length=1)
+    is_active: bool = True
+
+
+class CalendarFeedPatch(BaseModel):
+    name: str | None = None
+    ics_url: str | None = None
+    is_active: bool | None = None
+
+
+class CalendarFeedOut(ORMBase):
+    id: str
+    name: str
+    ics_url: str
+    is_active: bool
+    last_polled_at: datetime | None
+
+
 # ---------- Product / Deal Line Item ----------
 class ProductIn(BaseModel):
     external_id: str | None = None

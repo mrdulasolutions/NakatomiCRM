@@ -353,6 +353,79 @@ class DealLineItem(Base, TimestampMixin):
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
+class EmailConfig(Base, TimestampMixin):
+    """Per-workspace email credentials.
+
+    One row per workspace (1:1). IMAP fields are optional — workspaces
+    that only need outbound (agents sending email through Nakatomi) can
+    fill SMTP only and leave IMAP unset.
+
+    Passwords are stored in plaintext for now. v0.4 will add
+    application-level encryption keyed off ``SECRET_KEY``. Until then,
+    treat them like any other workspace secret — DB row-level access is
+    already gated by FK + workspace_id checks.
+    """
+
+    __tablename__ = "email_configs"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", name="uq_email_config_workspace"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+
+    imap_host: Mapped[str | None] = mapped_column(String(255))
+    imap_port: Mapped[int | None] = mapped_column(Integer)
+    imap_user: Mapped[str | None] = mapped_column(String(255))
+    imap_password: Mapped[str | None] = mapped_column(String(255))
+    imap_folder: Mapped[str] = mapped_column(String(64), default="INBOX", nullable=False)
+    imap_use_ssl: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    smtp_host: Mapped[str | None] = mapped_column(String(255))
+    smtp_port: Mapped[int | None] = mapped_column(Integer)
+    smtp_user: Mapped[str | None] = mapped_column(String(255))
+    smtp_password: Mapped[str | None] = mapped_column(String(255))
+    smtp_use_tls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    from_address: Mapped[str | None] = mapped_column(String(255))
+    from_name: Mapped[str | None] = mapped_column(String(255))
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_polled_uid: Mapped[int | None] = mapped_column(BigInteger)
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class CalendarFeed(Base, TimestampMixin):
+    """Per-workspace iCal feed (.ics URL) the calendar poller subscribes to.
+
+    Multiple feeds per workspace are allowed — typical pattern is one feed
+    per calendar (work + personal + shared team calendar) so attendee
+    matching can be scoped by source if needed.
+    """
+
+    __tablename__ = "calendar_feeds"
+    __table_args__ = (
+        Index("ix_calendar_feed_workspace", "workspace_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    ics_url: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_etag: Mapped[str | None] = mapped_column(String(255))
+    # Map of {ics_uid: activity_id} so the poller can update existing
+    # activities rather than create duplicates when an event is edited.
+    seen_uids: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
 class Activity(Base, TimestampMixin):
     """Calls, meetings, emails-as-log, and other timestamped touchpoints."""
 

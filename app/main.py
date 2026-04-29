@@ -15,11 +15,13 @@ from app.config import settings
 from app.routers import (
     activities,
     auth,
+    calendar,
     companies,
     contacts,
     custom_fields,
     dashboard,
     deals,
+    email,
     exports,
     files,
     forecast,
@@ -39,7 +41,7 @@ from app.routers import (
 from app.routers import (
     schema as schema_router,
 )
-from app.services import webhook_delivery
+from app.services import calendar_io, email_io, webhook_delivery
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -70,9 +72,15 @@ async def _lifespan(_app: FastAPI):
 
         if settings.WEBHOOK_WORKER_ENABLED:
             webhook_delivery.start_worker()
+        if settings.EMAIL_POLLER_ENABLED:
+            email_io.start_worker()
+        if settings.CALENDAR_POLLER_ENABLED:
+            calendar_io.start_worker()
         try:
             yield
         finally:
+            calendar_io.stop_worker()
+            email_io.stop_worker()
             webhook_delivery.stop_worker()
 
 
@@ -100,6 +108,14 @@ _TAGS_METADATA = [
         "description": "Period rollups of pipeline value (won, weighted, by stage, by owner). Calendar quarter, month, or custom range.",
     },
     {"name": "activities", "description": "Calls, meetings, email logs, and other timestamped touchpoints."},
+    {
+        "name": "email",
+        "description": "Per-workspace IMAP/SMTP config + outbound send. Inbound poller (gated by `EMAIL_POLLER_ENABLED`) creates email-kind activities and matches sender by `From:` to existing contacts.",
+    },
+    {
+        "name": "calendar",
+        "description": "iCal feed subscriptions (Google, Microsoft, Fastmail, Hostinger, iCloud). Poller creates meeting activities and matches attendees to contacts by email.",
+    },
     {"name": "notes", "description": "Markdown notes attached to any entity."},
     {"name": "tasks", "description": "Assignable tasks with due dates."},
     {
@@ -256,6 +272,8 @@ app.include_router(deals.router)
 app.include_router(products.router)
 app.include_router(forecast.router)
 app.include_router(activities.router)
+app.include_router(email.router)
+app.include_router(calendar.router)
 app.include_router(notes.router)
 app.include_router(tasks.router)
 app.include_router(relationships.router)

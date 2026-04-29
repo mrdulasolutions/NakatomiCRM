@@ -7,6 +7,20 @@ Versioning: [SemVer](https://semver.org/).
 
 ### Added
 
+- **Email adapter (IMAP + SMTP).** Per-workspace `EmailConfig` with
+  separate IMAP/SMTP creds; either half can be left blank. `POST
+  /email/send` sends via SMTP and persists an `email_outbound`
+  activity. Background poller (`EMAIL_POLLER_ENABLED=true`) pulls new
+  inbound messages by IMAP UID, matches `From:` to existing contacts
+  by email, and persists `email_inbound` activities. Idempotent on
+  IMAP UID — re-running the poller never duplicates.
+- **Calendar adapter (iCal feeds).** Per-workspace `CalendarFeed` with
+  any `.ics` URL (Google, Microsoft, Fastmail, Hostinger, iCloud).
+  Background poller (`CALENDAR_POLLER_ENABLED=true`) fetches the feed,
+  parses VEVENTs, matches attendees to contacts by email, and creates
+  or updates `meeting`-kind activities. Honors `ETag`/`If-None-Match`
+  for cheap polls. `POST /calendar/feeds/{id}/sync` runs an on-demand
+  sync.
 - **Product catalog + deal line items.** `Product` entity (sku unique
   per workspace, soft-deletable) and `DealLineItem` (nested under
   `/deals/{id}/line-items`). Lines snapshot `name` + `unit_price` from
