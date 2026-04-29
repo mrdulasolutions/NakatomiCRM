@@ -7,6 +7,10 @@ Versioning: [SemVer](https://semver.org/).
 
 ### Added
 
+- **8 new MCP tools** mirroring the v0.3 surface so agents reach the
+  new endpoints natively: `create_product`, `search_products`,
+  `add_line_item`, `list_line_items`, `forecast`, `send_email`,
+  `add_calendar_feed`, `sync_calendar_feed`.
 - **Email adapter (IMAP + SMTP).** Per-workspace `EmailConfig` with
   separate IMAP/SMTP creds; either half can be left blank. `POST
   /email/send` sends via SMTP and persists an `email_outbound`

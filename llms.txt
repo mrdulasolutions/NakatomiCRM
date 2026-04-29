@@ -10,9 +10,18 @@ humans who operate those agents.
 ## What an agent can do
 
 - Search, create, update, soft-delete contacts, companies, deals, activities,
-  notes, tasks, files
-- Move deals through pipeline stages
+  notes, tasks, files, products
+- Move deals through pipeline stages; build deal totals from line items that
+  snapshot product names + prices (history doesn't drift on catalog changes)
+- Forecast pipeline value for a calendar quarter, month, or custom range
+  via `GET /forecast?period=2026Q2` (or the `forecast` MCP tool)
 - Attach notes, tasks, and activities to any entity
+- Send email via the workspace's configured SMTP (`POST /email/send` or the
+  `send_email` MCP tool); inbound IMAP poller logs received messages and
+  matches them to contacts by sender address
+- Subscribe to iCal feeds (Google, Microsoft, Fastmail, Hostinger, iCloud)
+  via `POST /calendar/feeds`; the poller turns events into meeting
+  activities and matches attendees to contacts by email
 - Build and query a typed relationship graph between any two entities
 - Read the append-only timeline and audit log for any entity or the whole workspace
 - Register webhooks for any event type (contact.created, deal.stage_changed, …)
@@ -67,7 +76,11 @@ contact.updated        company.updated        deal.updated
 contact.deleted        company.deleted        deal.deleted
                                               deal.stage_changed
                                               deal.won / deal.lost
+                                              deal.line_item_added
+                                              deal.line_item_removed
+product.created        product.updated        product.deleted
 activity.created       activity.deleted
+email.sent             email.inbound          meeting.scheduled
 note.created           note.updated           note.deleted
 task.created           task.updated           task.deleted
 relationship.created   relationship.deleted

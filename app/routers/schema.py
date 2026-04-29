@@ -128,6 +128,42 @@ _ENTITIES = [
         },
     ),
     EntitySchemaOut(
+        entity="email_config",
+        fields={
+            "id": "uuid",
+            "imap_host": "string?",
+            "imap_user": "string?",
+            "smtp_host": "string?",
+            "smtp_user": "string?",
+            "from_address": "string?",
+            "is_active": "bool",
+            "last_polled_at": "datetime?",
+        },
+        endpoints={
+            "get": "GET /email/config",
+            "put": "PUT /email/config",
+            "delete": "DELETE /email/config",
+            "send": "POST /email/send",
+        },
+    ),
+    EntitySchemaOut(
+        entity="calendar_feed",
+        fields={
+            "id": "uuid",
+            "name": "string",
+            "ics_url": "string",
+            "is_active": "bool",
+            "last_polled_at": "datetime?",
+        },
+        endpoints={
+            "list": "GET /calendar/feeds",
+            "create": "POST /calendar/feeds",
+            "patch": "PATCH /calendar/feeds/{id}",
+            "delete": "DELETE /calendar/feeds/{id}",
+            "sync": "POST /calendar/feeds/{id}/sync",
+        },
+    ),
+    EntitySchemaOut(
         entity="activity",
         fields={
             "id": "uuid",
@@ -239,6 +275,9 @@ _EVENT_TYPES = [
     "product.created",
     "product.updated",
     "product.deleted",
+    "email.sent",
+    "email.inbound",
+    "meeting.scheduled",
     "activity.created",
     "activity.deleted",
     "note.created",

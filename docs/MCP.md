@@ -25,7 +25,15 @@ Nakatomi exposes an MCP server at `/mcp` using streamable HTTP transport.
 | `create_pipeline` | Create a pipeline and its stages in one call (for fresh installs or HubSpot-style imports) |
 | `create_deal` | Create a deal; picks default pipeline + first stage if unspecified |
 | `move_deal_stage` | Move a deal to a stage by slug (auto-sets status on won/lost stages) |
+| `add_line_item` | Add a line to a deal (snapshots from a `product_id` or accepts ad-hoc `name`+`unit_price`) |
+| `list_line_items` | Return the lines on a deal in display order |
+| `create_product` | Add a product to the workspace catalog |
+| `search_products` | Find products by substring on name/sku/description, exact SKU, or active flag |
+| `forecast` | Period rollup (`2026Q2`, `2026-04`, or `custom:from:to`) — totals + by-stage + by-owner |
 | `log_activity` | Log a call/meeting/email/etc. on any entity |
+| `send_email` | Send via the workspace's configured SMTP; persists an `email_outbound` activity |
+| `add_calendar_feed` | Subscribe the workspace to an iCal `.ics` URL (Google, Microsoft, Fastmail, etc.) |
+| `sync_calendar_feed` | Run an on-demand sync of one feed; returns `events_touched` |
 | `add_note` | Markdown note on any entity |
 | `create_task` | Task on any entity |
 | `list_tasks` | Filter tasks by status and assignee |
