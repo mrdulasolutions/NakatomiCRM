@@ -7,6 +7,12 @@ Versioning: [SemVer](https://semver.org/).
 
 ### Added
 
+- **`POST /bootstrap` + welcome page** — first-run flow for a fresh
+  Railway deploy. `GET /` on an empty install renders a server-side
+  signup form (no JS) that creates user + workspace + admin API key
+  in one transaction, then displays the key once. After the first
+  user exists, `/bootstrap` returns 409 and `/` reverts to the JSON
+  discovery doc. Set `BOOTSTRAP_TOKEN` to require a shared secret.
 - **OAuth 2.1 provider** (`/oauth/{register,authorize,token,revoke}` +
   `.well-known/oauth-authorization-server` and `oauth-protected-resource`) so
   Claude Desktop's Custom Connector GUI works out of the box.

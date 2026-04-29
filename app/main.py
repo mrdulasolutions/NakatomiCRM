@@ -31,6 +31,7 @@ from app.routers import (
     tasks,
     timeline,
     webhooks,
+    welcome,
     workspaces,
 )
 from app.routers import (
@@ -255,6 +256,7 @@ app.include_router(custom_fields.router)
 app.include_router(exports.router)
 app.include_router(schema_router.router)
 app.include_router(dashboard.router)
+app.include_router(welcome.router)
 
 
 # MCP server mounted at /mcp.
@@ -267,16 +269,5 @@ except Exception as exc:  # noqa: BLE001
     log.warning("MCP server failed to mount: %s", exc)
 
 
-@app.get("/")
-def root() -> dict:
-    return {
-        "name": "Nakatomi CRM",
-        "version": __version__,
-        "docs": "/docs",
-        "schema": "/schema",
-        "mcp": "/mcp",
-        "health": "/health",
-        "llms": "/llms.txt",
-        "agent_card": "/.well-known/agent.json",
-        "dashboard": "/dashboard" if settings.DASHBOARD_ENABLED else None,
-    }
+# Root path "/" is owned by app/routers/welcome.py — fresh installs get
+# the welcome page, initialized installs get the JSON discovery doc.

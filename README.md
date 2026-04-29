@@ -74,6 +74,10 @@ be prompted for:
 
 Everything else has a sensible default. After the deploy promotes,
 `/health` returns `{"ok": true}` and `/mcp/` speaks streamable HTTP.
+Open the project URL in a browser — the **welcome page** lets you
+create your workspace and an API key in a single form, with the key
+shown exactly once. After that, `/` serves the JSON discovery doc and
+`/bootstrap` is closed.
 
 Full template configuration — every variable, the dashboard publish
 flow, post-deploy seed commands — lives in
