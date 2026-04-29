@@ -279,6 +279,85 @@ class DealOut(ORMBase):
     updated_at: datetime
 
 
+# ---------- Product / Deal Line Item ----------
+class ProductIn(BaseModel):
+    external_id: str | None = None
+    name: str
+    sku: str | None = None
+    description: str | None = None
+    unit_price: float | None = None
+    currency: str = "USD"
+    is_active: bool = True
+    tags: list[str] = []
+    data: dict = {}
+
+
+class ProductPatch(BaseModel):
+    external_id: str | None = None
+    name: str | None = None
+    sku: str | None = None
+    description: str | None = None
+    unit_price: float | None = None
+    currency: str | None = None
+    is_active: bool | None = None
+    tags: list[str] | None = None
+    data: dict | None = None
+
+
+class ProductOut(ORMBase):
+    id: str
+    external_id: str | None
+    name: str
+    sku: str | None
+    description: str | None
+    unit_price: float | None
+    currency: str
+    is_active: bool
+    tags: list[str]
+    data: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class DealLineItemIn(BaseModel):
+    """Either supply ``product_id`` to snapshot from the catalog, or pass
+    ``name`` + ``unit_price`` directly for an ad-hoc line."""
+
+    product_id: str | None = None
+    name: str | None = None
+    sku: str | None = None
+    quantity: float = 1
+    unit_price: float | None = None
+    currency: str | None = None
+    position: int = 0
+    data: dict = {}
+
+
+class DealLineItemPatch(BaseModel):
+    name: str | None = None
+    sku: str | None = None
+    quantity: float | None = None
+    unit_price: float | None = None
+    currency: str | None = None
+    position: int | None = None
+    data: dict | None = None
+
+
+class DealLineItemOut(ORMBase):
+    id: str
+    deal_id: str
+    product_id: str | None
+    name: str
+    sku: str | None
+    quantity: float
+    unit_price: float
+    currency: str
+    position: int
+    data: dict
+    created_at: datetime
+    updated_at: datetime
+
+
 # ---------- Activity / Note / Task ----------
 class ActivityIn(BaseModel):
     external_id: str | None = None

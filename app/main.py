@@ -22,11 +22,13 @@ from app.routers import (
     deals,
     exports,
     files,
+    forecast,
     ingest,
     memory,
     notes,
     oauth,
     pipelines,
+    products,
     relationships,
     tasks,
     timeline,
@@ -88,6 +90,14 @@ _TAGS_METADATA = [
     {
         "name": "deals",
         "description": "Deals moving through a pipeline. Timeline captures every stage change.",
+    },
+    {
+        "name": "products",
+        "description": "Workspace product catalog + per-deal line items. Line items snapshot catalog values so historical totals don't drift.",
+    },
+    {
+        "name": "forecast",
+        "description": "Period rollups of pipeline value (won, weighted, by stage, by owner). Calendar quarter, month, or custom range.",
     },
     {"name": "activities", "description": "Calls, meetings, email logs, and other timestamped touchpoints."},
     {"name": "notes", "description": "Markdown notes attached to any entity."},
@@ -243,6 +253,8 @@ app.include_router(contacts.router)
 app.include_router(companies.router)
 app.include_router(pipelines.router)
 app.include_router(deals.router)
+app.include_router(products.router)
+app.include_router(forecast.router)
 app.include_router(activities.router)
 app.include_router(notes.router)
 app.include_router(tasks.router)

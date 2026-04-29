@@ -7,6 +7,17 @@ Versioning: [SemVer](https://semver.org/).
 
 ### Added
 
+- **Product catalog + deal line items.** `Product` entity (sku unique
+  per workspace, soft-deletable) and `DealLineItem` (nested under
+  `/deals/{id}/line-items`). Lines snapshot `name` + `unit_price` from
+  the catalog at creation so historical deal totals don't drift when
+  the catalog changes. Either pass `product_id` (snapshots from
+  catalog) or `name`+`unit_price` for an ad-hoc line.
+- **Forecast endpoint** — `GET /forecast?period=2026Q2` (or
+  `2026-04`, or `custom:2026-04-01:2026-06-30`). Returns totals
+  (open / won / lost / weighted), stage breakdown, and owner
+  breakdown for the period. Stage probability stored as 0–100 and
+  divided once at rollup. Filters: `pipeline_id`, `owner_user_id`.
 - **`POST /bootstrap` + welcome page** — first-run flow for a fresh
   Railway deploy. `GET /` on an empty install renders a server-side
   signup form (no JS) that creates user + workspace + admin API key

@@ -65,6 +65,7 @@ class EntityType(str, enum.Enum):
     note = "note"
     task = "task"
     file = "file"
+    product = "product"
 
 
 class MemberRole(str, enum.Enum):
@@ -284,6 +285,71 @@ class Deal(Base, TimestampMixin):
     owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class Product(Base, TimestampMixin):
+    """A sellable item in the workspace catalog. Referenced by ``DealLineItem``
+    to compose a deal's value from individual line items.
+
+    Pricing is captured as ``unit_price`` + ``currency`` for the catalog
+    default; line items snapshot the price at creation so historical deals
+    don't shift when the catalog is updated.
+    """
+
+    __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "external_id", name="uq_product_external_id"),
+        UniqueConstraint("workspace_id", "sku", name="uq_product_sku"),
+        Index("ix_product_workspace_deleted", "workspace_id", "deleted_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str | None] = mapped_column(String(64))
+    description: Mapped[str | None] = mapped_column(Text)
+
+    unit_price: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class DealLineItem(Base, TimestampMixin):
+    """A line on a deal. Snapshots ``name`` and ``unit_price`` so historical
+    deal values don't drift when the catalog updates.
+
+    Quantity is a ``Numeric`` because some workspaces sell hours, fractional
+    SKUs, or weight-based goods. Tax + discount stay in ``data`` to avoid
+    forcing a tax model on every workspace.
+    """
+
+    __tablename__ = "deal_line_items"
+    __table_args__ = (
+        Index("ix_deal_line_items_deal", "deal_id"),
+        Index("ix_deal_line_items_product", "product_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    deal_id: Mapped[str] = mapped_column(ForeignKey("deals.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[str | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"))
+
+    # Snapshots from the catalog at the time this line was added. We
+    # intentionally don't auto-sync these on product updates — past deals
+    # are historical artifacts.
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str | None] = mapped_column(String(64))
+    quantity: Mapped[float] = mapped_column(Numeric(18, 4), default=1, nullable=False)
+    unit_price: Mapped[float] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
