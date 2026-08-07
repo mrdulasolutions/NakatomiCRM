@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role
+from app.deps import Principal, enforce_resource_scope, get_principal, require_role_and_scopes
 from app.models import ApiKey, MemberRole, Membership, User, Workspace
 from app.schemas import (
     ApiKeyCreate,
@@ -19,9 +19,14 @@ from app.schemas import (
     WorkspaceOut,
     WorkspaceUpdate,
 )
+from app.scopes import default_scopes_for_role, validate_scope_names
 from app.security import generate_api_key
 
-router = APIRouter(prefix="/workspace", tags=["workspace"])
+router = APIRouter(
+    prefix="/workspace",
+    tags=["workspace"],
+    dependencies=[Depends(enforce_resource_scope("workspace"))],
+)
 
 
 @router.get("", response_model=WorkspaceOut)
@@ -33,7 +38,9 @@ def get_current(p: Principal = Depends(get_principal)) -> WorkspaceOut:
 def update_current(
     req: WorkspaceUpdate,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("workspace:write",))
+    ),
 ) -> WorkspaceOut:
     ws = db.get(Workspace, p.workspace.id)
     if not ws:
@@ -57,7 +64,9 @@ def list_members(db: Session = Depends(get_db), p: Principal = Depends(get_princ
 def invite_member(
     req: InviteRequest,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("workspace:write",))
+    ),
 ) -> MembershipOut:
     user = db.scalar(select(User).where(User.email == req.email.lower()))
     if not user:
@@ -78,7 +87,9 @@ def invite_member(
 def remove_member(
     user_id: str,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("workspace:write",))
+    ),
 ) -> OkResponse:
     m = db.scalar(
         select(Membership).where(Membership.workspace_id == p.workspace.id, Membership.user_id == user_id)
@@ -103,8 +114,27 @@ def list_keys(db: Session = Depends(get_db), p: Principal = Depends(get_principa
 def create_key(
     req: ApiKeyCreate,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("workspace:write",))
+    ),
 ) -> ApiKeyCreatedOut:
+    # Creating keys also requires admin:keys when the caller is itself an API key
+    # with restricted scopes (JWT owner/admin always has full role-derived scopes).
+    if p.api_key is not None and not p.can("admin:keys") and "*" not in p.scopes:
+        raise HTTPException(
+            status_code=403,
+            detail="missing scope admin:keys; suggestion: use an owner JWT or a full-access key",
+        )
+    if req.scopes is not None:
+        bad = validate_scope_names(req.scopes)
+        if bad:
+            raise HTTPException(
+                status_code=422,
+                detail=f"unknown scopes: {bad}; suggestion: use resource:action or '*'",
+            )
+        scopes = req.scopes
+    else:
+        scopes = default_scopes_for_role(req.role)
     full, prefix, digest = generate_api_key()
     key = ApiKey(
         workspace_id=p.workspace.id,
@@ -115,6 +145,7 @@ def create_key(
         role=req.role,
         expires_at=req.expires_at,
         rate_limit_per_minute=req.rate_limit_per_minute,
+        scopes=scopes,
     )
     db.add(key)
     db.commit()
@@ -129,7 +160,9 @@ def create_key(
 def revoke_key(
     key_id: str,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("workspace:write", "admin:keys"))
+    ),
 ) -> OkResponse:
     from datetime import datetime
 

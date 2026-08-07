@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, require_role
+from app.deps import Principal, require_role_and_scopes
 from app.models import MemberRole, Workspace
 from app.schemas import ImportRequest, ImportResponse
 from app.services.export import build_export
@@ -20,7 +20,9 @@ router = APIRouter(tags=["export-import"])
 def export_workspace(
     include_timeline: bool = False,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("export:read",))
+    ),
 ) -> JSONResponse:
     """Return a JSON dump of the entire workspace (minus operational state).
 
@@ -43,7 +45,9 @@ def export_workspace(
 def import_workspace(
     req: ImportRequest,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("export:write",))
+    ),
 ) -> ImportResponse:
     """Merge-upsert from an export document into the *current* workspace.
 

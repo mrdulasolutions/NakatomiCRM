@@ -4,14 +4,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal
+from app.deps import Principal, get_principal, enforce_resource_scope
 from app.models import IngestRun
 from app.schemas import IngestDiagnostic, IngestIn, IngestOut
 from app.services.events import emit
 from app.services.ingest import adapters  # noqa: F401  — registers adapters
 from app.services.ingest.base import run_ingest
 
-router = APIRouter(prefix="/ingest", tags=["ingest"])
+router = APIRouter(prefix="/ingest", tags=["ingest"],
+    dependencies=[Depends(enforce_resource_scope("ingest"))],
+)
 
 
 @router.post("", response_model=IngestOut)

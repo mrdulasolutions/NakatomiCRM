@@ -1,8 +1,10 @@
 # Nakatomi CRM
 
-> Headless, agent-native CRM. REST API + MCP server. Multi-tenant, soft-delete,
-> idempotent, relationship-graph-aware, memory-connector-friendly. Deploy to
-> Railway, Fly, Docker, or any Dockerfile-capable host.
+> Headless, agent-native CRM (v1.0 stable). REST API + MCP + A2A + ACP.
+> Multi-tenant, soft-delete, idempotent, relationship-graph-aware,
+> memory-connector-friendly. Deploy to Railway, Fly, Docker, or any
+> Dockerfile-capable host. Protocol SLA: 90-day sunset for breaking changes
+> (see GET /schema `protocols` block and docs/PROTOCOL_SLA.md).
 
 Primary audience: LLM agents (Claude, ChatGPT, Perplexity, Cursor), plus the
 humans who operate those agents.
@@ -10,7 +12,11 @@ humans who operate those agents.
 ## What an agent can do
 
 - Search, create, update, soft-delete contacts, companies, deals, activities,
-  notes, tasks, files, products
+  notes, tasks, files, products, **leads**, **quotes**
+- **Convert leads** → contact + optional company/deal (`POST /leads/{id}/convert`)
+- **Saved views** — `GET /views`, `POST /views/open_deals/run` (or MCP `run_view`)
+- **Deal participants** (champion, economic_buyer, …) on `/deals/{id}/participants`
+- **Quotes** versioned on deals; accept can sync deal amount
 - Move deals through pipeline stages; build deal totals from line items that
   snapshot product names + prices (history doesn't drift on catalog changes)
 - Forecast pipeline value for a calendar quarter, month, or custom range
@@ -41,18 +47,47 @@ Authorization: Bearer nk_<prefix>_<secret>
 Users obtain keys via `POST /workspace/api-keys` after signing up at
 `POST /auth/signup`.
 
+### Capability scopes (least privilege)
+
+Keys carry a `scopes` list. Format: `resource:action` (e.g. `contacts:write`).
+Special: `*` (full), `email:send`, `admin:keys`, `a2a:invoke`.
+
+| Role default | Scopes |
+| --- | --- |
+| owner / admin | `["*"]` |
+| member (agents) | all `:read` + `:write`, approvals, `a2a:invoke` — **no** `email:send`, **no** `admin:keys`, **no** hard-delete |
+| readonly | all `:read` only |
+
+- Soft-delete uses `:write`. Hard-delete (`?hard=true`) needs `resource:delete`.
+- `POST /email/send` needs `email:send` (or propose via `POST /approvals`).
+- Missing scope → **403** with a suggestion. Mint a new key with the right scopes.
+- Legacy keys with `scopes: null` behave as `["*"]`.
+
+## HITL approvals
+
+Sensitive actions can be staged for a human:
+
+- `POST /approvals` / MCP `propose_action` — create pending request
+- `POST /approvals/{id}/decide` / MCP `decide_approval` — owner/admin or `admin:keys`
+- Workspace policy: `workspace.data.policies.approvals = [{"action":"email.send","required":true}]`
+
 ## Transports
 
 - REST — full surface, documented via OpenAPI at `/docs` and `/openapi.json`
 - MCP — streamable HTTP at `/mcp`. Works with Claude Desktop custom connectors,
   Claude Agent SDK, Cursor, and any MCP 1.0+ client. Same bearer-token auth.
+- **A2A** — peer tasks at `/a2a/tasks` (REST binding); card at
+  `/.well-known/agent-card.json` — see docs/A2A.md
+- **ACP** — context pack at `/acp/context` or MCP `load_context` — see docs/ACP.md
 
 ## Discovery
 
+- `/discovery` — unified index of all agent surfaces
 - `/schema` — machine-readable entity + endpoint manifest
-- `/.well-known/agent.json` — A2A agent card
+- `/.well-known/agent-card.json` (+ legacy `agent.json`) — dynamic A2A card
 - `/llms.txt` — this file
-- `/health` — liveness check
+- `/health` — liveness; `/health/deep` — DB readiness
+- Boot: `GET /discovery` → `GET /acp/context` → MCP compound tools
 
 ## Key conventions
 
@@ -62,11 +97,13 @@ Users obtain keys via `POST /workspace/api-keys` after signing up at
 - Every list endpoint returns `{items, next_cursor, count}`. Pass
   `?cursor=<next_cursor>` for the next page. Cursors are opaque base64.
 - Every mutation accepts an optional `Idempotency-Key` header; replays return
-  the original response rather than double-applying the operation.
+  the original response with `Idempotent-Replay: true`. MCP mutators accept
+  `idempotency_key` where supported.
 - Bulk upsert: `POST /contacts/bulk_upsert` and `POST /companies/bulk_upsert`.
   Matches by `external_id` first, then by `email`/`domain`.
 - Soft delete: `DELETE /contacts/{id}` sets `deleted_at`. Pass `?hard=true` for
-  a real delete.
+  a real delete (requires `:delete` scope).
+- Every response includes `X-Request-Id` (pass one in to correlate agent logs).
 
 ## Events (webhook + timeline)
 

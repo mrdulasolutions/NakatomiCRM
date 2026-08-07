@@ -48,7 +48,12 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)) -> TokenResponse:
 @router.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     user = db.scalar(select(User).where(User.email == req.email.lower()))
-    if not user or not verify_password(req.password, user.password_hash) or not user.is_active:
+    if (
+        not user
+        or not user.password_hash
+        or not verify_password(req.password, user.password_hash)
+        or not user.is_active
+    ):
         raise HTTPException(status_code=401, detail="invalid credentials")
     mem = db.scalar(select(Membership).where(Membership.user_id == user.id))
     if not mem:

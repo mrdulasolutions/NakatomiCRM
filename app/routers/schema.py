@@ -299,5 +299,16 @@ router_schema = router  # alias so main.py can import clearly
 @router.get("/schema", response_model=SchemaOut)
 def describe() -> SchemaOut:
     from app import __version__
+    from app.protocol import protocol_manifest
 
-    return SchemaOut(version=__version__, entities=_ENTITIES, event_types=_EVENT_TYPES)
+    m = protocol_manifest()
+    return SchemaOut(
+        version=__version__,
+        entities=_ENTITIES,
+        event_types=_EVENT_TYPES,
+        protocols=m["versions"],
+        stability=m["stability"],
+        sunset_notice_days=m["sunset_notice_days"],
+        scheduled_sunsets=m["scheduled_sunsets"],
+        protocol_policy=m["policy"],
+    )

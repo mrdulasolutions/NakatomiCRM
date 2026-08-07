@@ -5,11 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role
+from app.deps import Principal, get_principal, require_role, enforce_resource_scope
 from app.models import MemberRole, Pipeline, Stage
 from app.schemas import OkResponse, PipelineIn, PipelineOut
 
-router = APIRouter(prefix="/pipelines", tags=["pipelines"])
+router = APIRouter(prefix="/pipelines", tags=["pipelines"],
+    dependencies=[Depends(enforce_resource_scope("pipelines"))],
+)
 
 
 @router.get("", response_model=list[PipelineOut])

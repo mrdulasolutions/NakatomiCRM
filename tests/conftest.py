@@ -46,7 +46,9 @@ def _schema() -> Iterator[None]:
     creates tables.
     """
     with engine.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        # Always install into public — a polluted non-public schema would hide
+        # similarity() from the default search_path.
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public"))
         Base.metadata.drop_all(bind=conn)
         Base.metadata.create_all(bind=conn)
     yield
@@ -91,6 +93,7 @@ def workspace() -> dict:
             prefix=prefix,
             key_hash=digest,
             role=MemberRole.owner,
+            scopes=["*"],
         )
         db.add(key)
         db.commit()

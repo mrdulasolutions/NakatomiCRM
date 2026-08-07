@@ -9,13 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal
+from app.deps import Principal, get_principal, enforce_resource_scope
 from app.models import EntityType, File
 from app.schemas import FileOut, OkResponse
 from app.services.events import emit
 from app.services.storage import get_storage
 
-router = APIRouter(prefix="/files", tags=["files"])
+router = APIRouter(prefix="/files", tags=["files"],
+    dependencies=[Depends(enforce_resource_scope("files"))],
+)
 
 _CHUNK = 1 << 20  # 1 MB
 

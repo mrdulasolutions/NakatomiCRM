@@ -1,19 +1,22 @@
 [project]
 name = "nakatomi"
-version = "0.1.0"
+version = "1.0.0"
 description = "A headless, agent-native CRM for Claude, ChatGPT, Perplexity, and Cursor."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 authors = [{ name = "Nakatomi contributors" }]
-keywords = ["crm", "agents", "mcp", "fastapi", "headless"]
+keywords = ["crm", "agents", "mcp", "fastapi", "headless", "a2a"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.12",
   "Topic :: Office/Business",
 ]
+
+[project.scripts]
+nakatomi = "app.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/mrdulasolutions/NakatomiCRM"

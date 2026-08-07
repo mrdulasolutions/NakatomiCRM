@@ -88,6 +88,14 @@ class ApiKeyCreate(BaseModel):
         ge=1,
         description="override the global API_KEY_RATE_LIMIT_PER_MINUTE for this key",
     )
+    scopes: list[str] | None = Field(
+        default=None,
+        description=(
+            "capability scopes (e.g. contacts:write, email:send, *). "
+            "Omit to default from role: owner/admin → ['*'], member → agent defaults "
+            "(write without hard-delete/email:send), readonly → read-only."
+        ),
+    )
 
 
 class ApiKeyOut(ORMBase):
@@ -95,6 +103,7 @@ class ApiKeyOut(ORMBase):
     name: str
     prefix: str
     role: MemberRole
+    scopes: list[str] | None = None
     last_used_at: datetime | None
     expires_at: datetime | None
     revoked_at: datetime | None
@@ -156,6 +165,7 @@ class CompanyIn(BaseModel):
     employee_count: int | None = None
     annual_revenue: float | None = None
     description: str | None = None
+    parent_company_id: str | None = None
     tags: list[str] = []
     data: dict = {}
 
@@ -169,6 +179,7 @@ class CompanyPatch(BaseModel):
     employee_count: int | None = None
     annual_revenue: float | None = None
     description: str | None = None
+    parent_company_id: str | None = None
     tags: list[str] | None = None
     data: dict | None = None
 
@@ -183,6 +194,7 @@ class CompanyOut(ORMBase):
     employee_count: int | None
     annual_revenue: float | None
     description: str | None
+    parent_company_id: str | None = None
     tags: list[str]
     data: dict
     created_at: datetime
@@ -639,6 +651,12 @@ class SchemaOut(BaseModel):
     version: str
     entities: list[EntitySchemaOut]
     event_types: list[str]
+    # v1.0+ protocol contract block (see app.protocol / docs/PROTOCOL_SLA.md)
+    protocols: dict | None = None
+    stability: str | None = None
+    sunset_notice_days: int | None = None
+    scheduled_sunsets: list | None = None
+    protocol_policy: str | None = None
 
 
 class AnyEntityOut(BaseModel):
@@ -794,3 +812,249 @@ class IngestOut(BaseModel):
     created_ids: list[str]
     updated_ids: list[str]
     diagnostics: list[IngestDiagnostic]
+
+
+# ---------- Approvals (HITL) ----------
+class ApprovalCreate(BaseModel):
+    action: str = Field(description="e.g. email.send, deal.won, custom.foo")
+    payload: dict = Field(default_factory=dict)
+    entity_type: str | None = None
+    entity_id: str | None = None
+    reason: str | None = None
+    expires_at: datetime | None = None
+    data: dict = Field(default_factory=dict)
+
+
+class ApprovalDecide(BaseModel):
+    approve: bool
+    note: str | None = None
+    execute: bool = Field(
+        default=True,
+        description="if true and action is executable, run it after approve",
+    )
+
+
+class ApprovalOut(ORMBase):
+    id: str
+    action: str
+    payload: dict
+    status: str
+    requested_by_user_id: str | None
+    requested_by_api_key_id: str | None
+    decided_by_user_id: str | None
+    decided_by_api_key_id: str | None
+    decided_at: datetime | None
+    expires_at: datetime | None
+    entity_type: str | None
+    entity_id: str | None
+    reason: str | None
+    decision_note: str | None
+    result: dict
+    data: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------- P2: Leads ----------
+class LeadIn(BaseModel):
+    external_id: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+    title: str | None = None
+    company_name: str | None = None
+    company_domain: str | None = None
+    source: str | None = None
+    status: str | None = None
+    score: float | None = None
+    owner_user_id: str | None = None
+    tags: list[str] = []
+    data: dict = {}
+
+
+class LeadPatch(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
+    title: str | None = None
+    company_name: str | None = None
+    company_domain: str | None = None
+    source: str | None = None
+    status: str | None = None
+    score: float | None = None
+    owner_user_id: str | None = None
+    tags: list[str] | None = None
+    data: dict | None = None
+
+
+class LeadOut(ORMBase):
+    id: str
+    external_id: str | None
+    first_name: str | None
+    last_name: str | None
+    email: str | None
+    phone: str | None
+    title: str | None
+    company_name: str | None
+    company_domain: str | None
+    source: str | None
+    status: str
+    score: float | None
+    owner_user_id: str | None
+    converted_contact_id: str | None
+    converted_company_id: str | None
+    converted_deal_id: str | None
+    converted_at: datetime | None
+    tags: list[str]
+    data: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class LeadConvertRequest(BaseModel):
+    create_company: bool = True
+    create_deal: bool = False
+    deal_name: str | None = None
+    pipeline_id: str | None = None
+    stage_id: str | None = None
+    amount: float | None = None
+    link_existing_contact: bool = True
+
+
+class LeadConvertResponse(BaseModel):
+    lead_id: str
+    contact_id: str
+    company_id: str | None
+    deal_id: str | None
+    already_converted: bool
+
+
+# ---------- P2: Deal participants ----------
+class DealParticipantIn(BaseModel):
+    contact_id: str
+    role: str = "other"
+    is_primary: bool = False
+    data: dict = {}
+
+
+class DealParticipantOut(ORMBase):
+    id: str
+    deal_id: str
+    contact_id: str
+    role: str
+    is_primary: bool
+    data: dict
+    created_at: datetime
+
+
+# ---------- P2: Quotes ----------
+class QuoteLineIn(BaseModel):
+    product_id: str | None = None
+    name: str | None = None
+    sku: str | None = None
+    quantity: float = 1
+    unit_price: float | None = None
+    currency: str = "USD"
+    position: int = 0
+    data: dict = {}
+
+
+class QuoteIn(BaseModel):
+    deal_id: str
+    name: str
+    currency: str = "USD"
+    valid_until: datetime | None = None
+    notes: str | None = None
+    external_id: str | None = None
+    lines: list[QuoteLineIn] = []
+    data: dict = {}
+
+
+class QuoteStatusPatch(BaseModel):
+    status: str
+    sync_deal_amount: bool = False
+
+
+class QuoteLineOut(ORMBase):
+    id: str
+    quote_id: str
+    product_id: str | None
+    name: str
+    sku: str | None
+    quantity: float
+    unit_price: float
+    currency: str
+    position: int
+    data: dict
+
+
+class QuoteOut(ORMBase):
+    id: str
+    deal_id: str
+    external_id: str | None
+    name: str
+    version: int
+    status: str
+    currency: str
+    subtotal: float
+    total: float
+    valid_until: datetime | None
+    sent_at: datetime | None
+    accepted_at: datetime | None
+    file_id: str | None
+    notes: str | None
+    data: dict
+    created_at: datetime
+    updated_at: datetime
+    lines: list[QuoteLineOut] = []
+
+
+# ---------- P2: Saved views ----------
+class SavedViewIn(BaseModel):
+    name: str
+    slug: str
+    entity_type: str
+    filters: list[dict] = []
+    sort: list[dict] = []
+    is_default: bool = False
+    data: dict = {}
+
+
+class SavedViewOut(ORMBase):
+    id: str
+    name: str
+    slug: str
+    entity_type: str
+    filters: list
+    sort: list
+    owner_user_id: str | None
+    is_default: bool
+    data: dict
+    created_at: datetime
+
+
+class CompanyMergeRequest(BaseModel):
+    winner_id: str
+    loser_id: str
+    dry_run: bool = False
+
+
+class ContactChannelIn(BaseModel):
+    channel_type: str  # email | phone | linkedin | other
+    value: str
+    is_primary: bool = False
+    label: str | None = None
+    data: dict = {}
+
+
+class ContactChannelOut(ORMBase):
+    id: str
+    contact_id: str
+    channel_type: str
+    value: str
+    is_primary: bool
+    label: str | None
+    data: dict
+    created_at: datetime

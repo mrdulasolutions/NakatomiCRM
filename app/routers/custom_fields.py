@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role
+from app.deps import Principal, get_principal, require_role, enforce_resource_scope
 from app.models import CustomFieldDefinition, EntityType, MemberRole
 from app.schemas import (
     CustomFieldIn,
@@ -14,7 +14,9 @@ from app.schemas import (
     OkResponse,
 )
 
-router = APIRouter(prefix="/custom-fields", tags=["custom-fields"])
+router = APIRouter(prefix="/custom-fields", tags=["custom-fields"],
+    dependencies=[Depends(enforce_resource_scope("custom_fields"))],
+)
 
 
 @router.get("", response_model=list[CustomFieldOut])

@@ -2,8 +2,14 @@
 
 ## Supported versions
 
-Nakatomi is pre-1.0. The latest tagged release on `main` is the supported version.
-Once we cut v1.0, this section will list a supported range.
+| Version | Supported |
+| --- | --- |
+| **1.x** | Yes — current stable line |
+| 0.x | No (pre-stable; upgrade to 1.x) |
+
+Security patches ship as `1.x.y` patches on the latest minor when practical.
+See [docs/PROTOCOL_SLA.md](./docs/PROTOCOL_SLA.md) for agent protocol
+compatibility (90-day sunset for breaking contract changes).
 
 ## Reporting a vulnerability
 

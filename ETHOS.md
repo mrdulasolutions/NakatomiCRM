@@ -21,9 +21,14 @@ is an LLM-driven agent with imperfect memory and a strong tendency to retry.
 
 Nakatomi stores structured facts: who, what company, what deal, what stage, what
 happened when, who is connected to whom. We delegate *soft* concerns — semantic
-recall, email threading, calendar logic, marketing automation — to specialized
-systems the user's agent already has plumbed in. We ship connector points; we do
-not ship deep integrations we'd be second-best at.
+recall, deep email clients, marketing automation — to specialized systems the
+user's agent already has plumbed in. We ship connector points; we do not ship
+deep integrations we'd be second-best at.
+
+**Thin I/O adapters are in-scope.** IMAP/SMTP and iCal feeds exist so agents can
+log inbound/outbound mail and meetings as activities without reinventing
+plumbing. Sequence engines, open-tracking pixels, and "inbox zero" clients are
+out of scope — agents compose those workflows and write structured results here.
 
 ## 4. Composable over opinionated
 
@@ -70,5 +75,18 @@ of convenience wrappers.
 
 ## 10. Non-goals are features
 
-We don't build email sending, calendar, marketing automation, or a rich UI.
-Saying no is how we stay useful.
+We don't build marketing automation, forms/landing pages, a rich product UI, or
+a full email/calendar product. Thin send/log adapters and HITL approvals are
+the boundary. Saying no is how we stay useful.
+
+## 11. Protocol-native, not protocol-exclusive
+
+Agents reach us via REST, MCP (tools), A2A (peer tasks), and ACP context packs.
+Every capability remains available over REST. New surfaces never become the only
+way to do something.
+
+## 12. Least privilege for agents
+
+API keys carry capability scopes. Sensitive actions (send email, hard delete,
+mint keys, decide approvals) require explicit grants or human-in-the-loop.
+Default agent keys write CRM data; they do not send email or administer keys.

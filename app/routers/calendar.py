@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role
+from app.deps import Principal, get_principal, require_role, enforce_resource_scope
 from app.models import CalendarFeed, MemberRole
 from app.schemas import (
     CalendarFeedIn,
@@ -24,7 +24,9 @@ from app.schemas import (
 )
 from app.services.calendar_io import sync_feed
 
-router = APIRouter(prefix="/calendar", tags=["calendar"])
+router = APIRouter(prefix="/calendar", tags=["calendar"],
+    dependencies=[Depends(enforce_resource_scope("calendar"))],
+)
 
 
 @router.get("/feeds", response_model=list[CalendarFeedOut])

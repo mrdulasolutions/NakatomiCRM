@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,7 @@ from app.models import (
     User,
     Workspace,
 )
+from app.scopes import default_scopes_for_role, has_scope, missing_scopes, normalize_scopes
 from app.security import decode_access_token, hash_api_key
 
 
@@ -33,6 +36,7 @@ class Principal:
     api_key: ApiKey | None
     workspace: Workspace
     role: MemberRole
+    scopes: list[str] = field(default_factory=lambda: ["*"])
 
     @property
     def user_id(self) -> str | None:
@@ -41,6 +45,9 @@ class Principal:
     @property
     def api_key_id(self) -> str | None:
         return self.api_key.id if self.api_key else None
+
+    def can(self, scope: str) -> bool:
+        return has_scope(self.scopes, scope)
 
 
 def _auth_error(msg: str) -> HTTPException:
@@ -145,7 +152,8 @@ def get_principal(
         if not ws:
             raise _auth_error("workspace not found")
         user = db.get(User, key.user_id) if key.user_id else None
-        return Principal(user=user, api_key=key, workspace=ws, role=key.role)
+        scopes = normalize_scopes(key.scopes)
+        return Principal(user=user, api_key=key, workspace=ws, role=key.role, scopes=scopes)
 
     # User JWT path
     payload = decode_access_token(token)
@@ -168,13 +176,89 @@ def get_principal(
     mem = db.scalar(select(Membership).where(Membership.workspace_id == ws.id, Membership.user_id == user.id))
     if not mem:
         raise _forbidden("not a member of this workspace")
-    return Principal(user=user, api_key=None, workspace=ws, role=mem.role)
+    scopes = default_scopes_for_role(mem.role)
+    return Principal(user=user, api_key=None, workspace=ws, role=mem.role, scopes=scopes)
 
 
 def require_role(*allowed: MemberRole):
     def _dep(p: Principal = Depends(get_principal)) -> Principal:
         if p.role not in allowed:
             raise _forbidden(f"requires one of: {[r.value for r in allowed]}")
+        return p
+
+    return _dep
+
+
+def require_scopes(*needed: str):
+    """Require all listed capability scopes. Suggestion lists the missing ones."""
+
+    def _dep(p: Principal = Depends(get_principal)) -> Principal:
+        miss = missing_scopes(p.scopes, *needed)
+        if miss:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"missing scopes: {miss}; "
+                    f"suggestion: create an API key with those scopes "
+                    f"(POST /workspace/api-keys) or use a key with '*'"
+                ),
+            )
+        return p
+
+    return _dep
+
+
+def require_role_and_scopes(*roles: MemberRole, scopes: tuple[str, ...] | list[str] = ()):
+    """Require membership role AND capability scopes (admin gates + least privilege)."""
+
+    def _dep(p: Principal = Depends(get_principal)) -> Principal:
+        if p.role not in roles:
+            raise _forbidden(f"requires one of: {[r.value for r in roles]}")
+        if scopes:
+            miss = missing_scopes(p.scopes, *scopes)
+            if miss:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        f"missing scopes: {miss}; "
+                        f"suggestion: create an API key with those scopes "
+                        f"(POST /workspace/api-keys) or use a key with '*'"
+                    ),
+                )
+        return p
+
+    return _dep
+
+
+def enforce_resource_scope(resource: str):
+    """Router-level dependency: map HTTP method → ``{resource}:read|write|delete``.
+
+    - GET/HEAD → ``:read``
+    - DELETE with ``?hard=true`` → ``:delete``
+    - everything else (POST/PATCH/PUT/DELETE soft) → ``:write``
+    """
+
+    def _dep(request: Request, p: Principal = Depends(get_principal)) -> Principal:
+        method = request.method.upper()
+        if method in ("GET", "HEAD"):
+            needed = f"{resource}:read"
+        elif method == "DELETE" and request.query_params.get("hard", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            needed = f"{resource}:delete"
+        else:
+            needed = f"{resource}:write"
+        miss = missing_scopes(p.scopes, needed)
+        if miss:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"missing scopes: {miss}; "
+                    f"suggestion: mint a key with {needed} or '*'"
+                ),
+            )
         return p
 
     return _dep
@@ -223,7 +307,10 @@ def check_idempotency(
     if existing.request_hash != fp:
         raise HTTPException(
             status_code=409,
-            detail="idempotency key reused with a different request body",
+            detail={
+                "error": "idempotency key reused with a different request body",
+                "suggestion": "use a new Idempotency-Key for a different payload",
+            },
         )
     return existing
 
@@ -238,6 +325,15 @@ def save_idempotency(
     status_code: int,
     response: dict,
 ) -> None:
+    # Already stored (concurrent double-save) — ignore.
+    existing = db.scalar(
+        select(IdempotencyKey).where(
+            IdempotencyKey.workspace_id == workspace_id,
+            IdempotencyKey.key == key,
+        )
+    )
+    if existing:
+        return
     rec = IdempotencyKey(
         workspace_id=workspace_id,
         key=key,
@@ -248,8 +344,116 @@ def save_idempotency(
         response_body=response,
     )
     db.add(rec)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:  # noqa: BLE001 — unique race
+        db.rollback()
 
 
 def json_bytes(d: dict) -> bytes:
-    return json.dumps(d, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(d, sort_keys=True, separators=(",", ":"), default=str).encode()
+
+
+@dataclass
+class IdempotencyGuard:
+    """Per-request helper. If the key was seen before, ``replay`` is a ready Response."""
+
+    key: str | None
+    method: str
+    path: str
+    body_bytes: bytes
+    workspace_id: str
+    db: Session
+    replay: Response | None = None
+    _saved: bool = False
+
+    def save(self, status_code: int, body: dict[str, Any] | Any) -> None:
+        if not self.key or self._saved:
+            return
+        if hasattr(body, "model_dump"):
+            body = body.model_dump(mode="json")
+        elif not isinstance(body, dict):
+            body = {"value": body}
+        save_idempotency(
+            self.db,
+            self.workspace_id,
+            self.key,
+            self.method,
+            self.path,
+            self.body_bytes,
+            status_code,
+            body,
+        )
+        self._saved = True
+
+
+async def get_idempotency_guard(
+    request: Request,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> IdempotencyGuard:
+    """Optional Idempotency-Key on mutating requests.
+
+    When present and already stored, ``guard.replay`` is a JSONResponse to return.
+    After a successful handler, call ``guard.save(status, body)``.
+    """
+    body = await request.body()
+    guard = IdempotencyGuard(
+        key=idempotency_key,
+        method=request.method,
+        path=request.url.path,
+        body_bytes=body,
+        workspace_id=p.workspace.id,
+        db=db,
+    )
+    if not idempotency_key:
+        return guard
+    existing = check_idempotency(
+        db, p.workspace.id, idempotency_key, request.method, request.url.path, body
+    )
+    if existing:
+        guard.replay = JSONResponse(
+            status_code=existing.status_code,
+            content=existing.response_body,
+            headers={"Idempotent-Replay": "true"},
+        )
+    return guard
+
+
+def mcp_idempotency(
+    db: Session,
+    principal: Principal,
+    *,
+    tool: str,
+    idempotency_key: str | None,
+    args: dict[str, Any],
+) -> tuple[dict | None, Any]:
+    """MCP-side idempotency. Returns (replay_body_or_None, save_fn).
+
+    ``save_fn(status_code, body)`` persists the response when a key was given.
+    """
+    if not idempotency_key:
+        return None, (lambda *_a, **_k: None)
+
+    path = f"mcp:{tool}"
+    body_bytes = json_bytes(args)
+    existing = check_idempotency(
+        db, principal.workspace.id, idempotency_key, "MCP", path, body_bytes
+    )
+    if existing:
+        return existing.response_body, (lambda *_a, **_k: None)
+
+    def _save(status_code: int, body: dict) -> None:
+        save_idempotency(
+            db,
+            principal.workspace.id,
+            idempotency_key,
+            "MCP",
+            path,
+            body_bytes,
+            status_code,
+            body,
+        )
+
+    return None, _save

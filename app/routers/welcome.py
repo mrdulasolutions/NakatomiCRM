@@ -102,6 +102,7 @@ def _bootstrap(
         prefix=prefix,
         key_hash=digest,
         role=MemberRole.admin,
+        scopes=["*"],
     )
     db.add(key)
     db.commit()

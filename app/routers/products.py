@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -31,11 +31,30 @@ from app.schemas import (
     ProductOut,
     ProductPatch,
 )
+from app.scopes import missing_scopes
 from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
-router = APIRouter(tags=["products"])
+
+def _products_or_deals_scope(request: Request, p: Principal = Depends(get_principal)) -> Principal:
+    """Line-items routes live under /deals/… — require deals scopes there."""
+    resource = "deals" if "/line-items" in request.url.path else "products"
+    method = request.method.upper()
+    if method in ("GET", "HEAD"):
+        needed = f"{resource}:read"
+    else:
+        needed = f"{resource}:write"
+    miss = missing_scopes(p.scopes, needed)
+    if miss:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"missing scopes: {miss}; suggestion: mint a key with {needed} or '*'",
+        )
+    return p
+
+
+router = APIRouter(tags=["products"], dependencies=[Depends(_products_or_deals_scope)])
 
 
 # ---------------------------------------------------------------------------
@@ -126,20 +145,20 @@ def patch_product(
     prod = db.get(Product, product_id)
     if not prod or prod.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
-    before = {c: getattr(prod, c) for c in ("name", "sku", "unit_price", "currency", "is_active")}
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    for k, v in updates.items():
         setattr(prod, k, v)
-    db.commit()
-    db.refresh(prod)
-    after = {c: getattr(prod, c) for c in ("name", "sku", "unit_price", "currency", "is_active")}
+    changes = compute_changes(prod, list(updates.keys()))
     emit(
         db,
         p,
         event_type="product.updated",
         entity_type=EntityType.product,
         entity_id=prod.id,
-        payload={"changes": compute_changes(before, after)},
+        payload={"changes": changes},
     )
+    db.commit()
+    db.refresh(prod)
     return ProductOut.model_validate(prod)
 
 

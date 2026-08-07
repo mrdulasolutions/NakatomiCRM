@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role
+from app.deps import Principal, require_role_and_scopes, require_scopes
 from app.models import Activity, EmailConfig, EntityType, MemberRole
 from app.schemas import (
     EmailConfigIn,
@@ -34,7 +34,9 @@ router = APIRouter(prefix="/email", tags=["email"])
 
 
 @router.get("/config", response_model=EmailConfigOut | None)
-def get_config(db: Session = Depends(get_db), p: Principal = Depends(get_principal)) -> EmailConfigOut | None:
+def get_config(
+    db: Session = Depends(get_db), p: Principal = Depends(require_scopes("email:read"))
+) -> EmailConfigOut | None:
     cfg = db.scalar(select(EmailConfig).where(EmailConfig.workspace_id == p.workspace.id))
     return EmailConfigOut.model_validate(cfg) if cfg else None
 
@@ -43,7 +45,9 @@ def get_config(db: Session = Depends(get_db), p: Principal = Depends(get_princip
 def put_config(
     payload: EmailConfigIn,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("email:write",))
+    ),
 ) -> EmailConfigOut:
     cfg = db.scalar(select(EmailConfig).where(EmailConfig.workspace_id == p.workspace.id))
     fields = payload.model_dump()
@@ -61,7 +65,9 @@ def put_config(
 @router.delete("/config", response_model=OkResponse)
 def delete_config(
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin)),
+    p: Principal = Depends(
+        require_role_and_scopes(MemberRole.owner, MemberRole.admin, scopes=("email:write",))
+    ),
 ) -> OkResponse:
     cfg = db.scalar(select(EmailConfig).where(EmailConfig.workspace_id == p.workspace.id))
     if cfg:
@@ -74,8 +80,30 @@ def delete_config(
 def send(
     payload: EmailSendRequest,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin, MemberRole.member)),
+    p: Principal = Depends(require_scopes("email:send")),
 ) -> EmailSendResponse:
+    # Workspace policy can force HITL even when the key has email:send.
+    from app.services.approvals import action_requires_approval, create_approval
+
+    send_payload = payload.model_dump()
+    if action_requires_approval(p.workspace.data, "email.send", send_payload):
+        row = create_approval(
+            db,
+            p,
+            action="email.send",
+            payload=send_payload,
+            entity_type="contact" if payload.contact_id else ("deal" if payload.deal_id else None),
+            entity_id=payload.contact_id or payload.deal_id,
+            reason="workspace policy requires approval for email.send",
+        )
+        raise HTTPException(
+            status_code=202,
+            detail=(
+                f"email.send requires approval; created approval_id={row.id}. "
+                "suggestion: wait for a human to POST /approvals/{id}/decide or use propose flow"
+            ),
+        )
+
     cfg = db.scalar(select(EmailConfig).where(EmailConfig.workspace_id == p.workspace.id))
     if cfg is None or not cfg.smtp_host:
         raise HTTPException(status_code=400, detail="SMTP not configured for this workspace")

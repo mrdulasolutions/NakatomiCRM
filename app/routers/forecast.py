@@ -32,10 +32,12 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal
+from app.deps import Principal, get_principal, enforce_resource_scope
 from app.models import Deal, DealStatus, Stage
 
-router = APIRouter(prefix="/forecast", tags=["forecast"])
+router = APIRouter(prefix="/forecast", tags=["forecast"],
+    dependencies=[Depends(enforce_resource_scope("forecast"))],
+)
 
 _QUARTER_RE = re.compile(r"^(\d{4})Q([1-4])$")
 _MONTH_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")

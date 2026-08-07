@@ -7,10 +7,19 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal, require_role
-from app.models import Contact, EntityType, MemberRole
+from app.deps import (
+    Pagination,
+    Principal,
+    enforce_resource_scope,
+    get_pagination,
+    require_role,
+    require_scopes,
+)
+from app.models import Contact, ContactChannel, EntityType, MemberRole
 from app.schemas import (
     BulkUpsertResult,
+    ContactChannelIn,
+    ContactChannelOut,
     ContactIn,
     ContactMergeRequest,
     ContactMergeResponse,
@@ -25,7 +34,11 @@ from app.services.events import emit
 from app.services.merge import merge_contacts
 from app.services.pagination import apply_cursor, encode_cursor
 
-router = APIRouter(prefix="/contacts", tags=["contacts"])
+router = APIRouter(
+    prefix="/contacts",
+    tags=["contacts"],
+    dependencies=[Depends(enforce_resource_scope("contacts"))],
+)
 
 
 def _base_query(db: Session, workspace_id: str, include_deleted: bool):
@@ -38,7 +51,7 @@ def _base_query(db: Session, workspace_id: str, include_deleted: bool):
 @router.get("", response_model=Page[ContactOut])
 def list_contacts(
     db: Session = Depends(get_db),
-    p: Principal = Depends(get_principal),
+    p: Principal = Depends(require_scopes("contacts:read")),
     page: Pagination = Depends(get_pagination),
     q: str | None = Query(None, description="substring match on first/last name/email"),
     email: str | None = None,
@@ -85,7 +98,7 @@ def create_contact(
     payload: ContactIn,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    p: Principal = Depends(get_principal),
+    p: Principal = Depends(require_scopes("contacts:write")),
 ) -> ContactOut:
     c = Contact(workspace_id=p.workspace.id, **payload.model_dump())
     db.add(c)
@@ -117,7 +130,7 @@ def list_duplicates(
     limit: int = Query(100, ge=1, le=500),
     name_threshold: float = Query(0.80, ge=0.0, le=1.0),
     db: Session = Depends(get_db),
-    p: Principal = Depends(get_principal),
+    p: Principal = Depends(require_scopes("contacts:read")),
 ) -> dict:
     """Return likely duplicate contact pairs in the current workspace.
 
@@ -144,7 +157,9 @@ def list_duplicates(
 
 
 @router.get("/{contact_id}", response_model=ContactOut)
-def get_contact(contact_id: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)):
+def get_contact(
+    contact_id: str, db: Session = Depends(get_db), p: Principal = Depends(require_scopes("contacts:read"))
+):
     c = db.get(Contact, contact_id)
     if not c or c.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
@@ -157,7 +172,7 @@ def patch_contact(
     payload: ContactPatch,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    p: Principal = Depends(get_principal),
+    p: Principal = Depends(require_scopes("contacts:write")),
 ) -> ContactOut:
     c = db.get(Contact, contact_id)
     if not c or c.workspace_id != p.workspace.id:
@@ -185,9 +200,14 @@ def delete_contact(
     contact_id: str,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    p: Principal = Depends(get_principal),
+    p: Principal = Depends(require_scopes("contacts:write")),
     hard: bool = False,
 ):
+    if hard and not p.can("contacts:delete"):
+        raise HTTPException(
+            status_code=403,
+            detail="hard delete requires contacts:delete scope; suggestion: soft-delete (omit hard=true)",
+        )
     c = db.get(Contact, contact_id)
     if not c or c.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
@@ -213,7 +233,7 @@ def bulk_upsert(
     items: list[ContactIn],
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    p: Principal = Depends(get_principal),
+    p: Principal = Depends(require_scopes("contacts:write")),
 ) -> BulkUpsertResult:
     created = updated = 0
     ids: list[str] = []
@@ -264,6 +284,74 @@ def bulk_upsert(
             )
     db.commit()
     return BulkUpsertResult(created=created, updated=updated, ids=ids)
+
+
+@router.get("/{contact_id}/channels", response_model=list[ContactChannelOut])
+def list_channels(
+    contact_id: str,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(require_scopes("contacts:read")),
+):
+    c = db.get(Contact, contact_id)
+    if not c or c.workspace_id != p.workspace.id:
+        raise HTTPException(status_code=404, detail="not found")
+    rows = db.scalars(
+        select(ContactChannel).where(
+            ContactChannel.contact_id == contact_id,
+            ContactChannel.deleted_at.is_(None),
+        )
+    ).all()
+    return [
+        ContactChannelOut(
+            id=r.id,
+            contact_id=r.contact_id,
+            channel_type=r.channel_type,
+            value=r.value,
+            is_primary=r.is_primary,
+            label=r.label,
+            data=r.data or {},
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/{contact_id}/channels", response_model=ContactChannelOut, status_code=201)
+def add_channel(
+    contact_id: str,
+    payload: ContactChannelIn,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(require_scopes("contacts:write")),
+) -> ContactChannelOut:
+    c = db.get(Contact, contact_id)
+    if not c or c.workspace_id != p.workspace.id:
+        raise HTTPException(status_code=404, detail="not found")
+    row = ContactChannel(
+        workspace_id=p.workspace.id,
+        contact_id=contact_id,
+        channel_type=payload.channel_type,
+        value=payload.value,
+        is_primary=payload.is_primary,
+        label=payload.label,
+        data=payload.data or {},
+    )
+    db.add(row)
+    if payload.is_primary and payload.channel_type == "email":
+        c.email = payload.value
+    if payload.is_primary and payload.channel_type == "phone":
+        c.phone = payload.value
+    db.commit()
+    db.refresh(row)
+    return ContactChannelOut(
+        id=row.id,
+        contact_id=row.contact_id,
+        channel_type=row.channel_type,
+        value=row.value,
+        is_primary=row.is_primary,
+        label=row.label,
+        data=row.data or {},
+        created_at=row.created_at,
+    )
 
 
 @router.post("/merge", response_model=ContactMergeResponse)

@@ -7,14 +7,24 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal
-from app.models import Deal, DealStatus, EntityType, Pipeline, Stage
-from app.schemas import DealIn, DealOut, DealPatch, OkResponse, Page
+from app.deps import Pagination, Principal, get_pagination, get_principal, enforce_resource_scope
+from app.models import Deal, DealParticipant, DealParticipantRole, DealStatus, EntityType, Pipeline, Stage
+from app.schemas import (
+    DealIn,
+    DealOut,
+    DealParticipantIn,
+    DealParticipantOut,
+    DealPatch,
+    OkResponse,
+    Page,
+)
 from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
-router = APIRouter(prefix="/deals", tags=["deals"])
+router = APIRouter(prefix="/deals", tags=["deals"],
+    dependencies=[Depends(enforce_resource_scope("deals"))],
+)
 
 
 def _default_pipeline(db: Session, workspace_id: str) -> Pipeline | None:
@@ -144,6 +154,23 @@ def patch_deal(
     updates = payload.model_dump(exclude_unset=True)
     old_stage = d.stage_id
     old_status = d.status
+    # Workspace policy (required fields / block rules)
+    from app.services.policies import evaluate_write
+
+    stage_slug = None
+    if "stage_id" in updates and updates["stage_id"]:
+        st = db.get(Stage, updates["stage_id"])
+        stage_slug = st.slug if st else None
+    check = {
+        "amount": updates.get("amount", d.amount),
+        "primary_contact_id": updates.get("primary_contact_id", d.primary_contact_id),
+        "status": updates.get("status", d.status),
+        "stage_id": updates.get("stage_id", d.stage_id),
+    }
+    if hasattr(check["status"], "value"):
+        check["status"] = check["status"].value
+    action = "deal.won" if check["status"] == "won" else "deal.updated"
+    evaluate_write(p, entity_type="deal", action=action, payload=check, stage_slug=stage_slug)
     for k, v in updates.items():
         setattr(d, k, v)
     if "status" in updates and updates["status"] in (DealStatus.won, DealStatus.lost):
@@ -211,5 +238,94 @@ def delete_deal(
         payload={"hard": hard},
         background=background,
     )
+    db.commit()
+    return OkResponse(message="deleted")
+
+
+@router.get("/{deal_id}/participants", response_model=list[DealParticipantOut])
+def list_participants(
+    deal_id: str,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+):
+    d = db.get(Deal, deal_id)
+    if not d or d.workspace_id != p.workspace.id:
+        raise HTTPException(status_code=404, detail="not found")
+    rows = db.scalars(
+        select(DealParticipant).where(
+            DealParticipant.deal_id == deal_id,
+            DealParticipant.deleted_at.is_(None),
+        )
+    ).all()
+    return [
+        DealParticipantOut(
+            id=r.id,
+            deal_id=r.deal_id,
+            contact_id=r.contact_id,
+            role=r.role.value if hasattr(r.role, "value") else str(r.role),
+            is_primary=r.is_primary,
+            data=r.data or {},
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/{deal_id}/participants", response_model=DealParticipantOut, status_code=201)
+def add_participant(
+    deal_id: str,
+    payload: DealParticipantIn,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+) -> DealParticipantOut:
+    d = db.get(Deal, deal_id)
+    if not d or d.workspace_id != p.workspace.id:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        role = DealParticipantRole(payload.role)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid role: {payload.role}; use champion|economic_buyer|legal|user|influencer|other",
+        ) from e
+    if payload.is_primary:
+        d.primary_contact_id = payload.contact_id
+    row = DealParticipant(
+        workspace_id=p.workspace.id,
+        deal_id=deal_id,
+        contact_id=payload.contact_id,
+        role=role,
+        is_primary=payload.is_primary,
+        data=payload.data or {},
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"conflict: {e.__class__.__name__}") from e
+    db.refresh(row)
+    return DealParticipantOut(
+        id=row.id,
+        deal_id=row.deal_id,
+        contact_id=row.contact_id,
+        role=row.role.value,
+        is_primary=row.is_primary,
+        data=row.data or {},
+        created_at=row.created_at,
+    )
+
+
+@router.delete("/{deal_id}/participants/{participant_id}", response_model=OkResponse)
+def remove_participant(
+    deal_id: str,
+    participant_id: str,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+) -> OkResponse:
+    row = db.get(DealParticipant, participant_id)
+    if not row or row.deal_id != deal_id or row.workspace_id != p.workspace.id:
+        raise HTTPException(status_code=404, detail="not found")
+    row.deleted_at = datetime.now(UTC)
     db.commit()
     return OkResponse(message="deleted")

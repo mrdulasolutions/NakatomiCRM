@@ -62,7 +62,22 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: create migrate database
+        run: |
+          python - <<'PY'
+          from sqlalchemy import create_engine, text
+          eng = create_engine(
+              "postgresql+psycopg://nakatomi:nakatomi@localhost:5432/postgres",
+              isolation_level="AUTOCOMMIT",
+          )
+          with eng.connect() as c:
+              exists = c.execute(text("SELECT 1 FROM pg_database WHERE datname='nakatomi_migrate'")).scalar()
+              if not exists:
+                  c.execute(text("CREATE DATABASE nakatomi_migrate"))
+          PY
       - name: pytest
+        env:
+          TEST_MIGRATE_URL: postgresql+psycopg://nakatomi:nakatomi@localhost:5432/nakatomi_migrate
         run: pytest --cov=app --cov-report=term-missing
 
   docker:

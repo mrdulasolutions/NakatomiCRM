@@ -66,6 +66,8 @@ class EntityType(str, enum.Enum):
     task = "task"
     file = "file"
     product = "product"
+    lead = "lead"
+    quote = "quote"
 
 
 class MemberRole(str, enum.Enum):
@@ -86,6 +88,56 @@ class TaskStatus(str, enum.Enum):
     in_progress = "in_progress"
     done = "done"
     cancelled = "cancelled"
+
+
+class ApprovalStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    expired = "expired"
+    executed = "executed"
+
+
+class A2ATaskStatus(str, enum.Enum):
+    submitted = "submitted"
+    working = "working"
+    input_required = "input_required"
+    completed = "completed"
+    failed = "failed"
+    canceled = "canceled"
+
+
+class LeadStatus(str, enum.Enum):
+    new = "new"
+    working = "working"
+    qualified = "qualified"
+    unqualified = "unqualified"
+    converted = "converted"
+
+
+class QuoteStatus(str, enum.Enum):
+    draft = "draft"
+    sent = "sent"
+    accepted = "accepted"
+    rejected = "rejected"
+    expired = "expired"
+
+
+class DealParticipantRole(str, enum.Enum):
+    champion = "champion"
+    economic_buyer = "economic_buyer"
+    legal = "legal"
+    user = "user"
+    influencer = "influencer"
+    other = "other"
+
+
+class JobStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+    canceled = "canceled"
 
 
 # ---------------------------------------------------------------------------
@@ -122,9 +174,13 @@ class User(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Null when the account is SSO-only (Google/GitHub) with no local password.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Optional SSO link — unique (provider, subject) when both set.
+    sso_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sso_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     memberships: Mapped[list[Membership]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
@@ -163,6 +219,9 @@ class ApiKey(Base, TimestampMixin):
     rate_limit_per_minute: Mapped[int | None] = mapped_column(Integer)
     usage_window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     usage_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Capability scopes (see app.scopes). NULL/empty means legacy full access ("*").
+    scopes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Free-form metadata. OAuth uses this to mark refresh tokens
     # (``data.oauth.kind = "refresh"``) and carry their client_id + scope.
@@ -222,6 +281,67 @@ class Company(Base, TimestampMixin):
     employee_count: Mapped[int | None] = mapped_column(Integer)
     annual_revenue: Mapped[float | None] = mapped_column(Numeric(18, 2))
     description: Mapped[str | None] = mapped_column(Text)
+    # Account hierarchy (P2) — self-FK; null = top-level
+    parent_company_id: Mapped[str | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+
+    tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class ContactChannel(Base, TimestampMixin):
+    """Extra emails/phones on a contact (primary still on Contact.email/phone)."""
+
+    __tablename__ = "contact_channels"
+    __table_args__ = (
+        Index("ix_contact_channel_contact", "contact_id"),
+        Index("ix_contact_channel_ws_value", "workspace_id", "value"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
+    # email | phone | linkedin | other
+    channel_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    value: Mapped[str] = mapped_column(String(512), nullable=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    label: Mapped[str | None] = mapped_column(String(64))
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class Lead(Base, TimestampMixin):
+    """Inbound lead before conversion to contact/company/deal."""
+
+    __tablename__ = "leads"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "external_id", name="uq_lead_external_id"),
+        Index("ix_lead_workspace_deleted", "workspace_id", "deleted_at"),
+        Index("ix_lead_email", "workspace_id", "email"),
+        Index("ix_lead_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+
+    first_name: Mapped[str | None] = mapped_column(String(255))
+    last_name: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(64))
+    title: Mapped[str | None] = mapped_column(String(255))
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    company_domain: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[str | None] = mapped_column(String(128))
+    status: Mapped[LeadStatus] = mapped_column(Enum(LeadStatus), default=LeadStatus.new, nullable=False)
+    score: Mapped[float | None] = mapped_column(Numeric(8, 2))
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Filled on convert
+    converted_contact_id: Mapped[str | None] = mapped_column(ForeignKey("contacts.id", ondelete="SET NULL"))
+    converted_company_id: Mapped[str | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"))
+    converted_deal_id: Mapped[str | None] = mapped_column(ForeignKey("deals.id", ondelete="SET NULL"))
+    converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
@@ -288,6 +408,27 @@ class Deal(Base, TimestampMixin):
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
+class DealParticipant(Base, TimestampMixin):
+    """Buying-committee role on a deal (champion, economic buyer, …)."""
+
+    __tablename__ = "deal_participants"
+    __table_args__ = (
+        UniqueConstraint("deal_id", "contact_id", "role", name="uq_deal_participant_role"),
+        Index("ix_deal_participant_deal", "deal_id"),
+        Index("ix_deal_participant_contact", "contact_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    deal_id: Mapped[str] = mapped_column(ForeignKey("deals.id", ondelete="CASCADE"), index=True)
+    contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"), index=True)
+    role: Mapped[DealParticipantRole] = mapped_column(
+        Enum(DealParticipantRole), default=DealParticipantRole.other, nullable=False
+    )
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
 class Product(Base, TimestampMixin):
     """A sellable item in the workspace catalog. Referenced by ``DealLineItem``
     to compose a deal's value from individual line items.
@@ -350,6 +491,78 @@ class DealLineItem(Base, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class Quote(Base, TimestampMixin):
+    """Versioned quote attached to a deal (headless — PDF is a File artifact)."""
+
+    __tablename__ = "quotes"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "external_id", name="uq_quote_external_id"),
+        Index("ix_quote_deal", "deal_id"),
+        Index("ix_quote_ws_status", "workspace_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    deal_id: Mapped[str] = mapped_column(ForeignKey("deals.id", ondelete="CASCADE"), index=True)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    status: Mapped[QuoteStatus] = mapped_column(Enum(QuoteStatus), default=QuoteStatus.draft, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    # Rollup of line items; recalculated on line changes
+    subtotal: Mapped[float] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    total: Mapped[float] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Optional PDF file
+    file_id: Mapped[str | None] = mapped_column(ForeignKey("files.id", ondelete="SET NULL"))
+    notes: Mapped[str | None] = mapped_column(Text)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class QuoteLineItem(Base, TimestampMixin):
+    __tablename__ = "quote_line_items"
+    __table_args__ = (Index("ix_quote_line_quote", "quote_id"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    quote_id: Mapped[str] = mapped_column(ForeignKey("quotes.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[str | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str | None] = mapped_column(String(64))
+    quantity: Mapped[float] = mapped_column(Numeric(18, 4), default=1, nullable=False)
+    unit_price: Mapped[float] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class SavedView(Base, TimestampMixin):
+    """Named filter + sort for agents (run via POST /views/{id}/run)."""
+
+    __tablename__ = "saved_views"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "slug", name="uq_saved_view_slug"),
+        Index("ix_saved_view_ws_entity", "workspace_id", "entity_type"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False)
+    # contact | company | deal | lead | task | approval
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Filter DSL: list of {field, op, value}
+    filters: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    # [{field, dir: asc|desc}]
+    sort: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    # null = workspace-shared
+    owner_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
 
@@ -798,3 +1011,159 @@ class IdempotencyKey(Base):
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
     response_body: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+
+
+class ApprovalRequest(Base, TimestampMixin):
+    """Human-in-the-loop gate for agent-proposed actions.
+
+    Agents create a pending request; a human or elevated key decides.
+    Optional auto-execution runs known actions on approve.
+    """
+
+    __tablename__ = "approval_requests"
+    __table_args__ = (
+        Index("ix_approval_ws_status", "workspace_id", "status"),
+        Index("ix_approval_ws_created", "workspace_id", "created_at"),
+        Index("ix_approval_entity", "entity_type", "entity_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+
+    # Machine-readable action key, e.g. "email.send", "deal.won", "custom"
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    status: Mapped[ApprovalStatus] = mapped_column(
+        Enum(ApprovalStatus), default=ApprovalStatus.pending, nullable=False
+    )
+
+    requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    requested_by_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    decided_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    decided_by_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    entity_type: Mapped[str | None] = mapped_column(String(64))
+    entity_id: Mapped[str | None] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(Text)
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class A2ATask(Base, TimestampMixin):
+    """Agent2Agent task — peer-agent work unit with lifecycle.
+
+    REST binding at ``/a2a/tasks`` (documented in docs/A2A.md). Maps to optional
+    CRM Task / ApprovalRequest for HITL and human-visible work.
+    """
+
+    __tablename__ = "a2a_tasks"
+    __table_args__ = (
+        Index("ix_a2a_ws_status", "workspace_id", "status"),
+        Index("ix_a2a_ws_created", "workspace_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+
+    status: Mapped[A2ATaskStatus] = mapped_column(
+        Enum(A2ATaskStatus), default=A2ATaskStatus.submitted, nullable=False
+    )
+    skill: Mapped[str | None] = mapped_column(String(128))
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+
+    # Structured input / output
+    input: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    result: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    # Message history: [{role, parts, at}]
+    messages: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    # Artifacts: [{name, mime_type, data|file_id, at}]
+    artifacts: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
+    # Optional CRM links
+    entity_type: Mapped[str | None] = mapped_column(String(64))
+    entity_id: Mapped[str | None] = mapped_column(String(64))
+    linked_task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    linked_approval_id: Mapped[str | None] = mapped_column(
+        ForeignKey("approval_requests.id", ondelete="SET NULL")
+    )
+
+    callback_url: Mapped[str | None] = mapped_column(String(2048))
+    context_etag: Mapped[str | None] = mapped_column(String(64))
+
+    requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    requested_by_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class CustomObjectType(Base, TimestampMixin):
+    """Workspace-defined object type (moldable CRM model)."""
+
+    __tablename__ = "custom_object_types"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "slug", name="uq_custom_object_slug"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # Field defs: [{name, label, type, required?, options?}]
+    fields: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class CustomRecord(Base, TimestampMixin):
+    """Instance of a custom object type."""
+
+    __tablename__ = "custom_records"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "object_slug", "external_id", name="uq_custom_record_external"),
+        Index("ix_custom_record_ws_slug", "workspace_id", "object_slug"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    object_type_id: Mapped[str] = mapped_column(
+        ForeignKey("custom_object_types.id", ondelete="CASCADE"), index=True
+    )
+    object_slug: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    # Display name convenience
+    name: Mapped[str | None] = mapped_column(String(512))
+    values: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    # Optional link to core CRM entity
+    related_entity_type: Mapped[str | None] = mapped_column(String(64))
+    related_entity_id: Mapped[str | None] = mapped_column(String(64))
+    tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class Job(Base, TimestampMixin):
+    """Async bulk work unit (ingest, import, export, merge, custom)."""
+
+    __tablename__ = "jobs"
+    __table_args__ = (
+        Index("ix_job_ws_status", "workspace_id", "status"),
+        Index("ix_job_ws_created", "workspace_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    # ingest | import | export | merge | a2a_batch | custom
+    job_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[JobStatus] = mapped_column(Enum(JobStatus), default=JobStatus.pending, nullable=False)
+    progress: Mapped[float] = mapped_column(Numeric(5, 2), default=0, nullable=False)  # 0-100
+    input: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    result: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    actor_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)

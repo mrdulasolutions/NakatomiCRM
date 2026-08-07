@@ -5,13 +5,15 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal
+from app.deps import Pagination, Principal, get_pagination, get_principal, enforce_resource_scope
 from app.models import EntityType, Relationship
 from app.schemas import OkResponse, Page, RelationshipIn, RelationshipOut
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
-router = APIRouter(prefix="/relationships", tags=["relationships"])
+router = APIRouter(prefix="/relationships", tags=["relationships"],
+    dependencies=[Depends(enforce_resource_scope("relationships"))],
+)
 
 
 @router.get("", response_model=Page[RelationshipOut])

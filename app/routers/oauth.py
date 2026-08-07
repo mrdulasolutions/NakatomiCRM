@@ -524,6 +524,7 @@ def _issue_tokens(
             key_hash=access_hash,
             role=role,
             expires_at=now + _ACCESS_TOKEN_TTL,
+            scopes=["*"],
         )
     )
     db.add(
@@ -535,6 +536,7 @@ def _issue_tokens(
             key_hash=refresh_hash,
             role=role,
             expires_at=now + _REFRESH_TOKEN_TTL,
+            scopes=["*"],
         )
     )
     # Set `data` on the refresh-token row so we can identify it at renewal.

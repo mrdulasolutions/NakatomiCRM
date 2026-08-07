@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role
+from app.deps import Principal, get_principal, require_role, enforce_resource_scope
 from app.models import MemberRole, Webhook, WebhookDelivery
 from app.schemas import (
     OkResponse,
@@ -18,7 +18,9 @@ from app.schemas import (
     WebhookPatch,
 )
 
-router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+router = APIRouter(prefix="/webhooks", tags=["webhooks"],
+    dependencies=[Depends(enforce_resource_scope("webhooks"))],
+)
 
 
 @router.get("", response_model=list[WebhookOut])
@@ -75,6 +77,48 @@ def delete_webhook(
     db.delete(hook)
     db.commit()
     return OkResponse(message="deleted")
+
+
+@router.get("/dead-letters")
+def dead_letters(
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+    limit: int = 50,
+):
+    """Failed/dead webhook deliveries for recovery agents."""
+    rows = db.scalars(
+        select(WebhookDelivery)
+        .where(
+            WebhookDelivery.workspace_id == p.workspace.id,
+            WebhookDelivery.status.in_(["failed", "dead"]),
+        )
+        .order_by(WebhookDelivery.created_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "items": [WebhookDeliveryOut.model_validate(r) for r in rows],
+        "count": len(rows),
+    }
+
+
+@router.post("/dead-letters/{delivery_id}/replay", response_model=OkResponse)
+def replay_delivery(
+    delivery_id: int,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(require_role(MemberRole.owner, MemberRole.admin, MemberRole.member)),
+):
+    """Re-queue a failed delivery for the webhook worker."""
+    from datetime import UTC, datetime
+
+    row = db.get(WebhookDelivery, delivery_id)
+    if not row or row.workspace_id != p.workspace.id:
+        raise HTTPException(status_code=404, detail="not found")
+    row.status = "pending"
+    row.next_attempt_at = datetime.now(UTC)
+    row.error = None
+    row.succeeded = False
+    db.commit()
+    return OkResponse(message="requeued")
 
 
 @router.get("/{webhook_id}/deliveries", response_model=list[WebhookDeliveryOut])

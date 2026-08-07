@@ -6,6 +6,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/tests-150%2B%20passing-7ee787.svg)](#tests)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](./CHANGELOG.md)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/nakatomicrm)
 
 ```mermaid
@@ -26,9 +28,23 @@ flowchart LR
 
 - **REST API** — every primitive (contacts, companies, deals, pipelines, activities, notes, tasks, files, relationships, timeline, webhooks) is a normal HTTP endpoint
 - **MCP server** — agents speak to the CRM natively at `/mcp` (streamable HTTP)
-- **Multi-tenant** — workspaces, users, per-workspace API keys
+- **Multi-tenant** — workspaces, users, per-workspace API keys with **capability scopes**
+- **HITL approvals** — agents propose; humans (or elevated keys) decide
 - **Memory-connector friendly** — plug in DocDeploy, Supermemory, GBrain, etc. for semantic recall; Nakatomi stays the structured source of truth
 - **Agent ergonomics** — bulk upsert, cursor pagination, idempotency keys, soft delete, relationship graph, self-describing `/schema` manifest, A2A agent card, `llms.txt`
+- **v1.0 stable** — protocol version SLA (90-day sunset), optional OpenTelemetry, optional Google/GitHub SSO, operator CLI (`python -m app`)
+
+## What we are / aren't
+
+| We are | We are not |
+| --- | --- |
+| Headless, agent-first CRM (REST + MCP) | A HubSpot/Salesforce UI clone |
+| Structured system of record (people, companies, deals, timeline) | A semantic memory product (use connectors) |
+| Thin email/calendar **I/O adapters** (log activities) | An inbox client or sequence engine |
+| Scoped API keys + HITL for dangerous actions | Trust-every-agent-with-admin by default |
+| Self-hostable, exportable workspace data | A SaaS lock-in with phone-home analytics |
+
+See [ETHOS.md](./ETHOS.md) and [ROADMAP.md](./ROADMAP.md) (P0–P4).
 
 ## Quickstart (Docker)
 
@@ -99,6 +115,36 @@ Two flavors:
 - **User JWT** (humans / scripts): `POST /auth/signup` or `POST /auth/login` → bearer token. Send `Authorization: Bearer <jwt>` and `X-Workspace: <slug-or-id>` on every request.
 - **API key** (agents): `POST /workspace/api-keys` (as an authed user). Send `Authorization: Bearer nk_<key>` — workspace is inferred from the key.
 
+### Scopes
+
+Pass `scopes` when minting a key, or accept role defaults:
+
+```bash
+# Agent key: CRM write, no email send
+curl -X POST "$HOST/workspace/api-keys" -H "Authorization: Bearer $OWNER" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"sdr-agent","role":"member"}'
+
+# Explicit minimal key
+curl -X POST "$HOST/workspace/api-keys" -H "Authorization: Bearer $OWNER" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"reader","role":"readonly","scopes":["contacts:read","deals:read","forecast:read"]}'
+```
+
+`email:send` and `admin:keys` are never in the member default. Use HITL
+(`POST /approvals`) or mint an elevated key when you truly need them.
+
+## Tests
+
+```bash
+# Postgres required (docker compose up -d postgres)
+export TEST_DATABASE_URL=postgresql+psycopg://nakatomi:nakatomi@localhost:5432/nakatomi_test
+export TEST_MIGRATE_URL=postgresql+psycopg://nakatomi:nakatomi@localhost:5432/nakatomi_migrate
+pytest -q
+```
+
+CI runs ruff, mypy, pytest (with coverage), and an Alembic upgrade-from-scratch smoke test.
+
 API keys are the recommended path for agents. They're cleaner for MCP clients (which typically let you set a static header in the connector config).
 
 ## MCP
@@ -140,15 +186,28 @@ Optional, off by default, local-only. Set `DASHBOARD_ENABLED=true` and visit
 `http://localhost:8000/dashboard`. Or install the `nakatomi-dashboard` Claude skill
 and just say **"nakatomi dashboard"** — the skill boots the stack and opens Chrome.
 
+## Operator CLI
+
+```bash
+python -m app version
+python -m app protocols          # protocol SLA manifest
+python -m app health --deep      # probe a running instance
+python -m app check-config       # production readiness (SECRET_KEY, OTel, SSO)
+```
+
 ## Project files
 
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — visual tour of how the pieces wire together (component layout, webhook flow, ingest, export/import, memory cross-linking)
+- [`docs/PROTOCOL_SLA.md`](./docs/PROTOCOL_SLA.md) — REST/MCP/A2A/ACP contract versions and 90-day sunset policy
+- [`docs/OBSERVABILITY.md`](./docs/OBSERVABILITY.md) — request logs + optional OpenTelemetry
+- [`docs/SSO.md`](./docs/SSO.md) — optional Google/GitHub login for humans
+- [`docs/DEPLOY.md`](./docs/DEPLOY.md) — Compose / Fly / Render + production checklist
 - [`docs/DEPLOYMENT_LESSONS.md`](./docs/DEPLOYMENT_LESSONS.md) — the eleven gotchas from our first Railway deploy; read before deploying to a new cloud target
 - [`AgentLab.md`](./AgentLab.md) — recipes for solo agents, multi-agent swarms, harness setups, connector chains, and anti-patterns. Start here if you're wiring agents at Nakatomi.
 - [Wiki](https://github.com/mrdulasolutions/NakatomiCRM/wiki) — deep dives on every subsystem (auth, webhooks, memory, ingest, deployment, troubleshooting)
 - [`ROADMAP.md`](./ROADMAP.md) — what's shipped, what's in flight, what's next
 - [`ETHOS.md`](./ETHOS.md) — values the project is guided by
-- [`SECURITY.md`](./SECURITY.md) — responsible disclosure
+- [`SECURITY.md`](./SECURITY.md) — supported versions + responsible disclosure
 - [`CONTRIBUTORS.md`](./CONTRIBUTORS.md), [`AUTHORS.md`](./AUTHORS.md)
 - [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)
 - [`CHANGELOG.md`](./CHANGELOG.md)

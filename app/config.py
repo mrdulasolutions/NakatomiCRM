@@ -61,5 +61,23 @@ class Settings(BaseSettings):
     # Dashboard — local audit UI, off by default
     DASHBOARD_ENABLED: bool = False
 
+    # Public origin for OAuth/SSO redirects (e.g. https://crm.example.com).
+    # Falls back to request Host headers when empty.
+    PUBLIC_BASE_URL: str = ""
+
+    # Optional OpenTelemetry (see app/otel.py, docs/OBSERVABILITY.md)
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "nakatomi"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
+
+    # Optional SSO (Google / GitHub). Empty client_id → provider disabled.
+    SSO_GOOGLE_CLIENT_ID: str = ""
+    SSO_GOOGLE_CLIENT_SECRET: str = ""
+    SSO_GITHUB_CLIENT_ID: str = ""
+    SSO_GITHUB_CLIENT_SECRET: str = ""
+    # When true, first-time SSO users get a personal workspace auto-created.
+    SSO_AUTO_CREATE_WORKSPACE: bool = True
+
 
 settings = Settings()

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,27 +14,40 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import __version__
 from app.config import settings
 from app.routers import (
+    a2a,
+    acp,
     activities,
+    approvals,
     auth,
     calendar,
     companies,
     contacts,
     custom_fields,
+    custom_objects,
     dashboard,
     deals,
+    discovery,
     email,
     exports,
     files,
     forecast,
+    forensics,
+    import_crm,
     ingest,
+    jobs,
+    leads,
     memory,
     notes,
     oauth,
     pipelines,
+    policies,
     products,
+    quotes,
     relationships,
+    sso,
     tasks,
     timeline,
+    views,
     webhooks,
     welcome,
     workspaces,
@@ -50,6 +64,23 @@ logging.basicConfig(
 log = logging.getLogger("nakatomi")
 
 
+def _assert_production_secrets() -> None:
+    """Refuse to boot production with a known-insecure SECRET_KEY."""
+    if settings.ENVIRONMENT.lower() not in {"production", "prod"}:
+        return
+    bad = {
+        "",
+        "insecure-dev-key-change-me",
+        "change-me-to-a-long-random-string",
+        "dev-only-change-me-0123456789abcdef",
+    }
+    if settings.SECRET_KEY in bad or len(settings.SECRET_KEY) < 32:
+        raise RuntimeError(
+            "Refusing to start: ENVIRONMENT=production requires a strong SECRET_KEY "
+            "(≥32 chars, not a documented default). See docs/DEPLOY.md."
+        )
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """Start the webhook-delivery worker AND the FastMCP session manager.
@@ -62,6 +93,11 @@ async def _lifespan(_app: FastAPI):
     Tests disable the webhook worker via ``WEBHOOK_WORKER_ENABLED=false``
     so they can drive ``process_pending_deliveries()`` deterministically.
     """
+    _assert_production_secrets()
+    from app.otel import setup_otel, shutdown_otel
+
+    setup_otel(app=_app)
+
     async with AsyncExitStack() as stack:
         try:
             from app.mcp_server import mcp as _mcp_server
@@ -82,6 +118,7 @@ async def _lifespan(_app: FastAPI):
             calendar_io.stop_worker()
             email_io.stop_worker()
             webhook_delivery.stop_worker()
+            shutdown_otel()
 
 
 # Tag metadata — shows up in /docs and /redoc as the section intros.
@@ -149,6 +186,34 @@ _TAGS_METADATA = [
         "name": "dashboard",
         "description": "Local audit UI. Off by default; enable with `DASHBOARD_ENABLED=true`.",
     },
+    {
+        "name": "approvals",
+        "description": "Human-in-the-loop gates for agent-proposed actions (email.send, deal.won, custom).",
+    },
+    {
+        "name": "a2a",
+        "description": "Agent2Agent REST binding — peer tasks, messages, complete/fail/cancel, HITL input-required.",
+    },
+    {
+        "name": "acp",
+        "description": "Agent Context Protocol — versioned workspace context packs for agent session boot.",
+    },
+    {
+        "name": "discovery",
+        "description": "Unified agent discovery index linking REST, MCP, A2A, ACP, OAuth, OpenAPI.",
+    },
+    {"name": "leads", "description": "Inbound leads + convert to contact/company/deal."},
+    {"name": "quotes", "description": "Versioned deal quotes with line-item snapshots."},
+    {"name": "views", "description": "Saved filter views/segments agents can run by slug."},
+    {"name": "jobs", "description": "Async bulk jobs (ingest, export, custom) with pollable status."},
+    {"name": "policies", "description": "Declarative workspace policies (required fields, blocks, auto-tasks)."},
+    {"name": "forensics", "description": "Audit search and entity time-travel as-of reconstruction."},
+    {"name": "import", "description": "One-shot CRM importers (HubSpot, Salesforce, Pipedrive, Attio, generic)."},
+    {"name": "custom-objects", "description": "Workspace-defined object types and records (moldable model)."},
+    {
+        "name": "sso",
+        "description": "Optional Google/GitHub SSO for human operators (disabled unless client credentials set).",
+    },
 ]
 
 
@@ -185,6 +250,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.middleware_idempotency import IdempotencyMiddleware  # noqa: E402
+
+app.add_middleware(IdempotencyMiddleware)
+
+
+@app.middleware("http")
+async def request_id_and_access_log(request: Request, call_next):
+    """Attach X-Request-Id and emit a structured access log line."""
+    import time
+
+    rid = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    request.state.request_id = rid
+    started = time.perf_counter()
+    response = await call_next(request)
+    response.headers["X-Request-Id"] = rid
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    # Best-effort actor from bearer prefix (never log full secrets).
+    actor = "-"
+    auth = request.headers.get("authorization") or ""
+    if auth.lower().startswith("bearer nk_"):
+        parts = auth.split("_", 2)
+        actor = f"nk_{parts[1]}" if len(parts) >= 2 else "nk_*"
+    elif auth.lower().startswith("bearer "):
+        actor = "jwt"
+    log.info(
+        "access method=%s path=%s status=%s ms=%s request_id=%s actor=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed_ms,
+        rid,
+        actor,
+    )
+    return response
+
 
 _STATUS_TITLES = {
     400: "Bad Request",
@@ -196,7 +296,9 @@ _STATUS_TITLES = {
     422: "Unprocessable Entity",
     429: "Too Many Requests",
     500: "Internal Server Error",
+    502: "Bad Gateway",
     503: "Service Unavailable",
+    202: "Accepted",
 }
 
 
@@ -226,7 +328,46 @@ async def _http_error(request, exc: StarletteHTTPException):
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "version": __version__}
+    """Liveness. Use ``?deep=true`` for a DB connectivity check."""
+    from app.otel import status as otel_status
+    from app.protocol import PROTOCOL_VERSIONS, STABILITY_TIER
+
+    return {
+        "ok": True,
+        "version": __version__,
+        "stability": STABILITY_TIER,
+        "protocols": PROTOCOL_VERSIONS,
+        "otel": otel_status(),
+    }
+
+
+@app.get("/health/deep")
+def health_deep():
+    """Readiness: ping Postgres. Returns 503 if the DB is unreachable."""
+    from sqlalchemy import text
+
+    from app.db import SessionLocal
+    from app.otel import status as otel_status
+    from app.protocol import PROTOCOL_VERSIONS, STABILITY_TIER
+
+    base = {
+        "version": __version__,
+        "stability": STABILITY_TIER,
+        "protocols": PROTOCOL_VERSIONS,
+        "otel": otel_status(),
+    }
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
+        return {"ok": True, "db": "up", **base}
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(
+            status_code=503,
+            content={"ok": False, "db": "down", "error": str(exc), **base},
+        )
 
 
 # Agent-facing discovery files (llms.txt, .well-known/agent.json).
@@ -258,17 +399,46 @@ def nakatomi_txt():
 app.include_router(oauth.router)
 
 
+# Dynamic A2A agent cards (prefer these over static public/.well-known files).
+@app.get("/.well-known/agent.json", include_in_schema=False)
+@app.get("/.well-known/agent-card.json", include_in_schema=False)
+def well_known_agent_card(request: Request):
+    from app.services.agent_card import build_agent_card
+
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    base = f"{proto}://{host}"
+    auth = request.headers.get("authorization") or ""
+    extended = auth.lower().startswith("bearer ")
+    return build_agent_card(base_url=base, extended=extended)
+
+
 if _PUBLIC_DIR.exists():
+    # Static mount still serves other well-known assets if any; agent cards
+    # are handled by the dynamic routes above (registered first).
     app.mount("/.well-known", StaticFiles(directory=str(_PUBLIC_DIR / ".well-known")), name="well-known")
 
 
 # REST routers
 app.include_router(auth.router)
+app.include_router(sso.router)
 app.include_router(workspaces.router)
+app.include_router(approvals.router)
+app.include_router(a2a.router)
+app.include_router(acp.router)
+app.include_router(discovery.router)
 app.include_router(contacts.router)
 app.include_router(companies.router)
+app.include_router(leads.router)
 app.include_router(pipelines.router)
 app.include_router(deals.router)
+app.include_router(quotes.router)
+app.include_router(views.router)
+app.include_router(jobs.router)
+app.include_router(policies.router)
+app.include_router(forensics.router)
+app.include_router(import_crm.router)
+app.include_router(custom_objects.router)
 app.include_router(products.router)
 app.include_router(forecast.router)
 app.include_router(activities.router)

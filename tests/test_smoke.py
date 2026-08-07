@@ -11,7 +11,8 @@ def test_health(client):
     assert "version" in body
 
 
-def test_root_advertises_surfaces(client):
+def test_root_advertises_surfaces(client, workspace):
+    # Empty installs serve the welcome HTML; once a workspace exists, "/" is JSON discovery.
     r = client.get("/")
     assert r.status_code == 200
     body = r.json()
@@ -38,7 +39,10 @@ def test_agent_card(client):
     assert r.status_code == 200
     card = r.json()
     assert card["name"] == "Nakatomi CRM"
-    assert any(t["type"] == "mcp" for t in card["transports"])
+    # Dynamic A2A card: transports live under nakatomi.* (also skills at top level)
+    transports = card.get("transports") or card.get("nakatomi", {}).get("transports") or []
+    assert any(t.get("type") == "mcp" for t in transports)
+    assert "skills" in card
 
 
 def test_openapi_metadata_populated(client):

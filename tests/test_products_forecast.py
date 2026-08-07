@@ -162,6 +162,7 @@ def test_forecast_quarter_rollup(client, workspace):
             "name": "Won",
             "amount": 2000,
             "stage_id": won["id"],
+            "status": "won",
             "expected_close_date": "2026-06-01T00:00:00Z",
         },
     )

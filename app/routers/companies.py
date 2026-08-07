@@ -7,14 +7,24 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal
+from app.deps import Pagination, Principal, get_pagination, get_principal, enforce_resource_scope
 from app.models import Company, EntityType
-from app.schemas import BulkUpsertResult, CompanyIn, CompanyOut, CompanyPatch, Page
+from app.schemas import (
+    BulkUpsertResult,
+    CompanyIn,
+    CompanyMergeRequest,
+    CompanyOut,
+    CompanyPatch,
+    Page,
+)
+from app.services.company_merge import merge_companies
 from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
-router = APIRouter(prefix="/companies", tags=["companies"])
+router = APIRouter(prefix="/companies", tags=["companies"],
+    dependencies=[Depends(enforce_resource_scope("companies"))],
+)
 
 
 @router.get("", response_model=Page[CompanyOut])
@@ -146,6 +156,25 @@ def delete_company(
     )
     db.commit()
     return {"ok": True}
+
+
+@router.post("/merge")
+def merge_endpoint(
+    req: CompanyMergeRequest,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+):
+    """Merge two companies (owner-style write). Loser is soft-deleted."""
+    try:
+        return merge_companies(
+            db,
+            p,
+            winner_id=req.winner_id,
+            loser_id=req.loser_id,
+            dry_run=req.dry_run,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/bulk_upsert", response_model=BulkUpsertResult)

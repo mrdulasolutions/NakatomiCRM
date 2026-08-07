@@ -1,20 +1,46 @@
+# Runtime — pin reasons in comments (P0.1 hygiene).
+# Bump deliberately; CI installs a clean venv from this file.
+
+# API framework + ASGI server
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
+
+# DB + migrations (Postgres-only; JSONB / pg_trgm required)
 sqlalchemy==2.0.36
-psycopg[binary]==3.2.3
+psycopg[binary]==3.2.13   # 3.2.3 vanished from PyPI; binary wheels for 3.12
 alembic==1.14.0
+
+# Settings + validation
 pydantic==2.11.0
 pydantic[email]==2.11.0
 pydantic-settings==2.7.0
 email-validator==2.2.0
+
+# Auth (JWT user sessions + API key hashing)
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
+bcrypt==4.0.1             # passlib 1.7.x breaks on bcrypt>=4.1
+
+# Uploads, HTTP client (webhooks, calendar, memory adapters)
 python-multipart==0.0.20
 httpx==0.28.1
+
+# MCP streamable-HTTP server mounted at /mcp
 mcp==1.27.0
+
+# Optional S3-compatible file storage
 boto3==1.35.84
+
+# Local .env loading
 python-dotenv==1.0.1
+
+# --- optional OpenTelemetry (install when OTEL_ENABLED=true) ---
+# opentelemetry-api
+# opentelemetry-sdk
+# opentelemetry-exporter-otlp-proto-http
+# opentelemetry-instrumentation-fastapi
+# opentelemetry-instrumentation-httpx
+# opentelemetry-instrumentation-sqlalchemy
 
 # --- dev / test ---
 pytest==8.3.4

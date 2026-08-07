@@ -11,6 +11,22 @@ The button was previously wired to the generic
 required users to add Postgres and paste a `SECRET_KEY` by hand. That
 fallback is still in git history if we ever need to go back to it.
 
+## v1.0 status (repo vs published template)
+
+| Piece | In this repo | Live Railway template |
+| --- | --- | --- |
+| App code + migrations (→ 0015) | Yes on `main` after push | **Only after** the template's source service is redeployed from latest git |
+| `railway.toml` (Dockerfile build, `/health`, 300s timeout, alembic on start) | Yes | Inherits from repo on next deploy |
+| Template **variable defaults** (OTel/SSO/`PUBLIC_BASE_URL`) | Documented below | **Dashboard republish required** — git does not auto-update Railway's published template form |
+| One-click URL | Unchanged: `https://railway.com/deploy/nakatomicrm` | Same URL; image version follows last template redeploy |
+
+**To refresh the live 1-click after a release:**
+
+1. Push `main` (or the template branch Railway tracks).
+2. In the **source** Nakatomi project: redeploy the app service (pulls Dockerfile + `alembic upgrade head` through 0015).
+3. Project settings → **Publish as Template** (or "Update template") so new installs get any new optional env vars.
+4. Smoke: `GET /health` → `"version": "1.0.0"`, `GET /auth/sso/providers`.
+
 ---
 
 ## Upgrading file storage to Railway Bucket (optional)
@@ -78,6 +94,15 @@ account or R2 setup required — it's all inside Railway.
 | `WEBHOOK_WORKER_ENABLED` | `true` | | |
 | `WEBHOOK_TIMEOUT_SECONDS` | `10` | | |
 | `WEBHOOK_MAX_RETRIES` | `3` | | |
+| `PUBLIC_BASE_URL` | (empty) | | Set to the public HTTPS origin after first deploy (SSO / OAuth redirects). |
+| `OTEL_ENABLED` | `false` | | Optional OpenTelemetry ([OBSERVABILITY.md](./OBSERVABILITY.md)). |
+| `OTEL_SERVICE_NAME` | `nakatomi` | | |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | (empty) | | e.g. collector OTLP/HTTP base URL. |
+| `SSO_GOOGLE_CLIENT_ID` | (empty) | | Optional human SSO ([SSO.md](./SSO.md)). |
+| `SSO_GOOGLE_CLIENT_SECRET` | (empty, sensitive) | | |
+| `SSO_GITHUB_CLIENT_ID` | (empty) | | |
+| `SSO_GITHUB_CLIENT_SECRET` | (empty, sensitive) | | |
+| `SSO_AUTO_CREATE_WORKSPACE` | `true` | | First SSO login creates a personal workspace. |
 
 6. Add a **volume**: mount `/app/data` in the nakatomi service so
    `STORAGE_BACKEND=local` uploads survive redeploys.

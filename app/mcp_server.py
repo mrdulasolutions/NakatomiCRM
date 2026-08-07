@@ -22,10 +22,12 @@ from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import func, or_, select
 
 from app.db import SessionLocal
-from app.deps import Principal
+from app.deps import Principal, mcp_idempotency
 from app.models import (
     Activity,
     ApiKey,
+    ApprovalRequest,
+    ApprovalStatus,
     CalendarFeed,
     Company,
     Contact,
@@ -47,6 +49,7 @@ from app.models import (
     User,
     Workspace,
 )
+from app.scopes import has_scope, missing_scopes, normalize_scopes
 from app.security import hash_api_key
 from app.services.ingest import adapters as _ingest_adapters  # noqa: F401  — registers adapters
 from app.services.ingest.base import run_ingest
@@ -96,7 +99,17 @@ def _principal_from_ctx(ctx: Context) -> tuple[Principal, Any]:
         raise RuntimeError("invalid or revoked api key")
     ws = db.get(Workspace, key.workspace_id)
     user = db.get(User, key.user_id) if key.user_id else None
-    return Principal(user=user, api_key=key, workspace=ws, role=key.role), db
+    scopes = normalize_scopes(key.scopes)
+    return Principal(user=user, api_key=key, workspace=ws, role=key.role, scopes=scopes), db
+
+
+def _require_scopes(principal: Principal, *needed: str) -> None:
+    miss = missing_scopes(principal.scopes, *needed)
+    if miss:
+        raise RuntimeError(
+            f"missing scopes: {miss}; suggestion: mint a key with those scopes "
+            f"via POST /workspace/api-keys or use '*'"
+        )
 
 
 def _record_event(
@@ -132,6 +145,7 @@ def search_contacts(
     """Search contacts by name/email substring, exact email, company, or tag."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "contacts:read")
         q = select(Contact).where(Contact.workspace_id == p.workspace.id, Contact.deleted_at.is_(None))
         if query:
             like = f"%{query.lower()}%"
@@ -159,6 +173,7 @@ def get_contact(ctx: Context, contact_id: str) -> dict:
     """Fetch one contact by id."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "contacts:read")
         c = db.get(Contact, contact_id)
         if not c or c.workspace_id != p.workspace.id:
             raise RuntimeError("not found")
@@ -179,10 +194,28 @@ def create_contact(
     tags: list[str] | None = None,
     external_id: str | None = None,
     data: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> dict:
-    """Create a new contact."""
+    """Create a new contact. Pass idempotency_key to safely retry."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "contacts:write")
+        args = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": email,
+            "phone": phone,
+            "title": title,
+            "company_id": company_id,
+            "tags": tags,
+            "external_id": external_id,
+            "data": data,
+        }
+        replay, save = mcp_idempotency(
+            db, p, tool="create_contact", idempotency_key=idempotency_key, args=args
+        )
+        if replay is not None:
+            return replay
         c = Contact(
             workspace_id=p.workspace.id,
             first_name=first_name,
@@ -207,7 +240,9 @@ def create_contact(
         )
         db.commit()
         db.refresh(c)
-        return _serialize(c)
+        out = _serialize(c)
+        save(201, out)
+        return out
     finally:
         db.close()
 
@@ -217,6 +252,7 @@ def update_contact(ctx: Context, contact_id: str, updates: dict) -> dict:
     """Patch an existing contact. ``updates`` may contain any field from the contact schema."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "contacts:write")
         c = db.get(Contact, contact_id)
         if not c or c.workspace_id != p.workspace.id:
             raise RuntimeError("not found")
@@ -253,6 +289,7 @@ def search_companies(
 ) -> list[dict]:
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "companies:read")
         q = select(Company).where(Company.workspace_id == p.workspace.id, Company.deleted_at.is_(None))
         if query:
             like = f"%{query.lower()}%"
@@ -280,9 +317,16 @@ def create_company(
     tags: list[str] | None = None,
     external_id: str | None = None,
     data: dict | None = None,
+
+    idempotency_key: str | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "companies:write")
+        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
+        _replay, _save = mcp_idempotency(db, p, tool="create_company", idempotency_key=idempotency_key, args=_idem_args)
+        if _replay is not None:
+            return _replay
         c = Company(
             workspace_id=p.workspace.id,
             name=name,
@@ -308,7 +352,9 @@ def create_company(
         )
         db.commit()
         db.refresh(c)
-        return _serialize(c)
+        out = _serialize(c)
+        _save(201, out)
+        return out
     finally:
         db.close()
 
@@ -322,6 +368,7 @@ def create_company(
 def list_pipelines(ctx: Context) -> list[dict]:
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "pipelines:read")
         rows = db.scalars(select(Pipeline).where(Pipeline.workspace_id == p.workspace.id)).all()
         out = []
         for pipe in rows:
@@ -372,6 +419,7 @@ def create_pipeline(
     allowed = {"name", "slug", "position", "probability", "is_won", "is_lost"}
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "pipelines:write")
         pipe = Pipeline(
             workspace_id=p.workspace.id,
             name=name,
@@ -434,9 +482,16 @@ def create_deal(
     expected_close_date: datetime | None = None,
     tags: list[str] | None = None,
     data: dict | None = None,
+
+    idempotency_key: str | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "deals:write")
+        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
+        _replay, _save = mcp_idempotency(db, p, tool="create_deal", idempotency_key=idempotency_key, args=_idem_args)
+        if _replay is not None:
+            return _replay
         if not pipeline_id:
             pipe = db.scalar(
                 select(Pipeline)
@@ -480,7 +535,9 @@ def create_deal(
         )
         db.commit()
         db.refresh(d)
-        return _serialize(d)
+        out = _serialize(d)
+        _save(201, out)
+        return out
     finally:
         db.close()
 
@@ -490,6 +547,7 @@ def move_deal_stage(ctx: Context, deal_id: str, stage_slug: str) -> dict:
     """Move a deal to a new stage (by slug within its pipeline)."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "deals:write")
         d = db.get(Deal, deal_id)
         if not d or d.workspace_id != p.workspace.id:
             raise RuntimeError("not found")
@@ -540,6 +598,7 @@ def log_activity(
     """Log a call, meeting, email, or other touchpoint against a contact/company/deal."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "activities:write")
         a = Activity(
             workspace_id=p.workspace.id,
             actor_user_id=p.user_id,
@@ -573,6 +632,7 @@ def add_note(ctx: Context, entity_type: str, entity_id: str, body: str, data: di
     """Attach a markdown note to a CRM entity."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "notes:write")
         n = Note(
             workspace_id=p.workspace.id,
             author_user_id=p.user_id,
@@ -608,9 +668,16 @@ def create_task(
     entity_type: str | None = None,
     entity_id: str | None = None,
     data: dict | None = None,
+
+    idempotency_key: str | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "tasks:write")
+        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
+        _replay, _save = mcp_idempotency(db, p, tool="create_task", idempotency_key=idempotency_key, args=_idem_args)
+        if _replay is not None:
+            return _replay
         t = Task(
             workspace_id=p.workspace.id,
             title=title,
@@ -633,7 +700,9 @@ def create_task(
         )
         db.commit()
         db.refresh(t)
-        return _serialize(t)
+        out = _serialize(t)
+        _save(201, out)
+        return out
     finally:
         db.close()
 
@@ -647,6 +716,7 @@ def list_tasks(
 ) -> list[dict]:
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "tasks:read")
         q = select(Task).where(Task.workspace_id == p.workspace.id, Task.deleted_at.is_(None))
         if status:
             q = q.where(Task.status == TaskStatus(status))
@@ -677,6 +747,7 @@ def relate(
     """Create a typed edge between two entities in the relationship graph."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "relationships:write")
         r = Relationship(
             workspace_id=p.workspace.id,
             source_type=EntityType(source_type),
@@ -717,6 +788,7 @@ def timeline(ctx: Context, entity_type: str, entity_id: str, limit: int = 50) ->
     """Return the most recent events for one entity."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "timeline:read")
         rows = db.scalars(
             select(TimelineEvent)
             .where(
@@ -771,6 +843,7 @@ def memory_recall(
     """
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "memory:read")
         targets = connectors or list(enabled_connectors().keys())
         out: list[dict] = []
         for name in targets:
@@ -829,6 +902,7 @@ def memory_link(
     (connector, external_id, crm_entity_type, crm_entity_id)."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "memory:write")
         try:
             et = EntityType(crm_entity_type)
         except ValueError:
@@ -868,6 +942,7 @@ def memory_trace(ctx: Context, entity_type: str, entity_id: str) -> list[dict]:
     """Return every external memory linked to the given CRM entity."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "memory:read")
         try:
             et = EntityType(entity_type)
         except ValueError:
@@ -912,6 +987,7 @@ def ingest(
     """
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "ingest:write")
         result = run_ingest(
             db,
             p,
@@ -982,10 +1058,17 @@ def create_product(
     description: str | None = None,
     tags: list[str] | None = None,
     data: dict | None = None,
+
+    idempotency_key: str | None = None,
 ) -> dict:
     """Add a product to the workspace catalog. Returns the new product."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "products:write")
+        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
+        _replay, _save = mcp_idempotency(db, p, tool="create_product", idempotency_key=idempotency_key, args=_idem_args)
+        if _replay is not None:
+            return _replay
         prod = Product(
             workspace_id=p.workspace.id,
             name=name,
@@ -1012,7 +1095,9 @@ def create_product(
             payload={"via": "mcp"},
         )
         db.commit()
-        return _serialize(prod)
+        out = _serialize(prod)
+        _save(201, out)
+        return out
     finally:
         db.close()
 
@@ -1028,6 +1113,7 @@ def search_products(
     """Find products by substring on name/sku/description, exact SKU, or active flag."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "products:read")
         query = select(Product).where(
             Product.workspace_id == p.workspace.id, Product.deleted_at.is_(None)
         )
@@ -1062,12 +1148,19 @@ def add_line_item(
     currency: str | None = None,
     position: int = 0,
     data: dict | None = None,
+
+    idempotency_key: str | None = None,
 ) -> dict:
     """Add a line to a deal. Either reference a ``product_id`` (snapshots
     catalog name + price) or supply ``name`` + ``unit_price`` directly for
     an ad-hoc line."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "deals:write")
+        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
+        _replay, _save = mcp_idempotency(db, p, tool="add_line_item", idempotency_key=idempotency_key, args=_idem_args)
+        if _replay is not None:
+            return _replay
         deal = db.get(Deal, deal_id)
         if not deal or deal.workspace_id != p.workspace.id or deal.deleted_at is not None:
             raise RuntimeError("deal not found")
@@ -1117,7 +1210,9 @@ def add_line_item(
             },
         )
         db.commit()
-        return _serialize(line)
+        out = _serialize(line)
+        _save(201, out)
+        return out
     finally:
         db.close()
 
@@ -1127,6 +1222,7 @@ def list_line_items(ctx: Context, deal_id: str) -> list[dict]:
     """Return the line items on a deal in display order."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "deals:read")
         deal = db.get(Deal, deal_id)
         if not deal or deal.workspace_id != p.workspace.id:
             raise RuntimeError("deal not found")
@@ -1159,6 +1255,7 @@ def forecast(
 
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "forecast:read")
         start, end, label = _parse_period(period)
         from datetime import datetime as _dt
         from datetime import timedelta as _td
@@ -1269,13 +1366,13 @@ def send_email(
     contact_id: str | None = None,
     deal_id: str | None = None,
 ) -> dict:
-    """Send an email via the workspace's configured SMTP. Persists an
-    ``email_outbound`` activity (linked to the contact or deal if
-    supplied). Requires SMTP creds set via ``PUT /email/config``."""
+    """Send an email via the workspace's configured SMTP. Requires ``email:send`` scope.
+    Persists an ``email_outbound`` activity. Prefer ``propose_action`` when HITL is required."""
     from app.services.email_io import send_email as _send
 
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "email:send")
         cfg = db.scalar(select(EmailConfig).where(EmailConfig.workspace_id == p.workspace.id))
         if cfg is None or not cfg.smtp_host:
             raise RuntimeError("SMTP not configured for this workspace")
@@ -1348,6 +1445,7 @@ def add_calendar_feed(ctx: Context, name: str, ics_url: str) -> dict:
     ``sync_calendar_feed`` after to ingest events immediately."""
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "calendar:write")
         feed = CalendarFeed(workspace_id=p.workspace.id, name=name, ics_url=ics_url)
         db.add(feed)
         db.commit()
@@ -1366,6 +1464,7 @@ def sync_calendar_feed(ctx: Context, feed_id: str) -> dict:
 
     p, db = _principal_from_ctx(ctx)
     try:
+        _require_scopes(p, "calendar:write")
         feed = db.get(CalendarFeed, feed_id)
         if not feed or feed.workspace_id != p.workspace.id:
             raise RuntimeError("feed not found")
@@ -1378,17 +1477,1314 @@ def sync_calendar_feed(ctx: Context, feed_id: str) -> dict:
         db.close()
 
 
+# ---------------------------------------------------------------------------
+# Approvals (HITL)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def propose_action(
+    ctx: Context,
+    action: str,
+    payload: dict | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    reason: str | None = None,
+) -> dict:
+    """Propose an action for human approval (HITL). Returns a pending approval_id.
+
+    Use for sensitive work the agent cannot or should not execute alone
+    (email.send without scope, large deal.won, custom workflows).
+    """
+    from app.services.approvals import create_approval
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "approvals:write")
+        row = create_approval(
+            db,
+            p,
+            action=action,
+            payload=payload or {},
+            entity_type=entity_type,
+            entity_id=entity_id,
+            reason=reason,
+        )
+        return _serialize(row)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_pending_approvals(ctx: Context, limit: int = 50) -> list[dict]:
+    """List pending (and recent) approval requests for this workspace."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "approvals:read")
+        q = (
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.workspace_id == p.workspace.id,
+                ApprovalRequest.deleted_at.is_(None),
+            )
+            .order_by(ApprovalRequest.created_at.desc())
+            .limit(min(limit, 200))
+        )
+        return [_serialize(r) for r in db.scalars(q).all()]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def decide_approval(
+    ctx: Context,
+    approval_id: str,
+    approve: bool,
+    note: str | None = None,
+    execute: bool = True,
+) -> dict:
+    """Approve or reject a pending request. Requires owner/admin role or admin:keys scope."""
+    from app.models import MemberRole
+    from app.services.approvals import decide_approval as _decide
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "approvals:write")
+        if p.role not in (MemberRole.owner, MemberRole.admin) and not has_scope(p.scopes, "admin:keys"):
+            raise RuntimeError(
+                "deciding approvals requires owner/admin or admin:keys; "
+                "suggestion: escalate to a human principal"
+            )
+        row = db.get(ApprovalRequest, approval_id)
+        if not row or row.workspace_id != p.workspace.id:
+            raise RuntimeError("not found")
+        if row.status != ApprovalStatus.pending:
+            raise RuntimeError(f"approval is already {row.status.value}")
+        row = _decide(db, p, row, approve=approve, note=note, execute=execute)
+        return _serialize(row)
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Compound tools (P1.1) + ACP boot
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def load_context(ctx: Context, sections: str | None = None) -> dict:
+    """Boot into a workspace — ACP context pack (schema, pipelines, open work, policies, scopes).
+
+    Requires any authenticated key. Pass sections as comma-separated names to thin the pack.
+    Scope: any (authenticated). Prefer this before inventing field names.
+    """
+    from app.services.context_pack import build_context_pack
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        sec = {s.strip() for s in sections.split(",")} if sections else None
+        return build_context_pack(db, p, sections=sec)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def morning_briefing(ctx: Context, stale_days: int = 14) -> dict:
+    """Open work snapshot: due tasks, stale deals, pending approvals, recent timeline.
+
+    Scopes: tasks:read, deals:read, approvals:read, timeline:read (or *).
+    """
+    from datetime import timedelta
+
+    from app.models import ApprovalRequest, ApprovalStatus, Deal, DealStatus, Task, TaskStatus, TimelineEvent
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "tasks:read")
+        _require_scopes(p, "deals:read")
+        now = datetime.now(UTC)
+        week = now + timedelta(days=7)
+        due = db.scalars(
+            select(Task)
+            .where(
+                Task.workspace_id == p.workspace.id,
+                Task.deleted_at.is_(None),
+                Task.status.in_([TaskStatus.open, TaskStatus.in_progress]),
+                Task.due_at.is_not(None),
+                Task.due_at <= week,
+            )
+            .order_by(Task.due_at.asc())
+            .limit(20)
+        ).all()
+        stale = db.scalars(
+            select(Deal)
+            .where(
+                Deal.workspace_id == p.workspace.id,
+                Deal.deleted_at.is_(None),
+                Deal.status == DealStatus.open,
+                Deal.updated_at < now - timedelta(days=stale_days),
+            )
+            .order_by(Deal.updated_at.asc())
+            .limit(20)
+        ).all()
+        pending = []
+        if has_scope(p.scopes, "approvals:read"):
+            pending = list(
+                db.scalars(
+                    select(ApprovalRequest)
+                    .where(
+                        ApprovalRequest.workspace_id == p.workspace.id,
+                        ApprovalRequest.status == ApprovalStatus.pending,
+                        ApprovalRequest.deleted_at.is_(None),
+                    )
+                    .order_by(ApprovalRequest.created_at.desc())
+                    .limit(20)
+                ).all()
+            )
+        recent = db.scalars(
+            select(TimelineEvent)
+            .where(TimelineEvent.workspace_id == p.workspace.id)
+            .order_by(TimelineEvent.created_at.desc())
+            .limit(15)
+        ).all()
+        return {
+            "as_of": now.isoformat(),
+            "tasks_due": [_serialize(t) for t in due],
+            "stale_deals": [_serialize(d) for d in stale],
+            "pending_approvals": [_serialize(a) for a in pending],
+            "recent_timeline": [
+                {
+                    "event_type": e.event_type,
+                    "entity_type": e.entity_type.value if e.entity_type else None,
+                    "entity_id": e.entity_id,
+                    "created_at": e.created_at.isoformat() if e.created_at else None,
+                }
+                for e in recent
+            ],
+        }
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def upsert_account_map(
+    ctx: Context,
+    company_name: str,
+    company_domain: str | None = None,
+    contacts: list[dict] | None = None,
+    relationships: list[dict] | None = None,
+    company_external_id: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict:
+    """Create/update a company, contacts, and typed relationships in one call.
+
+    contacts: [{first_name, last_name, email, title, external_id?, …}]
+    relationships: [{source_type, source_email|source_id, target_type, target_id|target_email,
+                     relation_type}] — source/target can reference emails from this batch.
+
+    Scopes: companies:write, contacts:write, relationships:write.
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "companies:write")
+        _require_scopes(p, "contacts:write")
+        args = {
+            "company_name": company_name,
+            "company_domain": company_domain,
+            "contacts": contacts,
+            "relationships": relationships,
+            "company_external_id": company_external_id,
+        }
+        replay, save = mcp_idempotency(
+            db, p, tool="upsert_account_map", idempotency_key=idempotency_key, args=args
+        )
+        if replay is not None:
+            return replay
+
+        company = None
+        if company_external_id:
+            company = db.scalar(
+                select(Company).where(
+                    Company.workspace_id == p.workspace.id,
+                    Company.external_id == company_external_id,
+                )
+            )
+        if company is None and company_domain:
+            company = db.scalar(
+                select(Company).where(
+                    Company.workspace_id == p.workspace.id,
+                    func.lower(Company.domain) == company_domain.lower(),
+                )
+            )
+        if company is None:
+            company = Company(
+                workspace_id=p.workspace.id,
+                name=company_name,
+                domain=company_domain,
+                external_id=company_external_id,
+            )
+            db.add(company)
+            db.flush()
+            _record_event(
+                db, p, event_type="company.created", entity_type=EntityType.company, entity_id=company.id, payload={"via": "upsert_account_map"}
+            )
+        else:
+            company.name = company_name or company.name
+            if company_domain:
+                company.domain = company_domain
+
+        email_to_id: dict[str, str] = {}
+        contact_ids: list[str] = []
+        for cdata in contacts or []:
+            email = cdata.get("email")
+            existing = None
+            if cdata.get("external_id"):
+                existing = db.scalar(
+                    select(Contact).where(
+                        Contact.workspace_id == p.workspace.id,
+                        Contact.external_id == cdata["external_id"],
+                    )
+                )
+            if existing is None and email:
+                existing = db.scalar(
+                    select(Contact).where(
+                        Contact.workspace_id == p.workspace.id,
+                        func.lower(Contact.email) == email.lower(),
+                    )
+                )
+            if existing:
+                for k in ("first_name", "last_name", "phone", "title"):
+                    if cdata.get(k) is not None:
+                        setattr(existing, k, cdata[k])
+                existing.company_id = company.id
+                contact_ids.append(existing.id)
+                if email:
+                    email_to_id[email.lower()] = existing.id
+            else:
+                c = Contact(
+                    workspace_id=p.workspace.id,
+                    first_name=cdata.get("first_name"),
+                    last_name=cdata.get("last_name"),
+                    email=email,
+                    phone=cdata.get("phone"),
+                    title=cdata.get("title"),
+                    company_id=company.id,
+                    external_id=cdata.get("external_id"),
+                    tags=cdata.get("tags") or [],
+                    data=cdata.get("data") or {},
+                )
+                db.add(c)
+                db.flush()
+                contact_ids.append(c.id)
+                if email:
+                    email_to_id[email.lower()] = c.id
+                _record_event(
+                    db, p, event_type="contact.created", entity_type=EntityType.contact, entity_id=c.id, payload={"via": "upsert_account_map"}
+                )
+
+        rel_ids: list[str] = []
+        for r in relationships or []:
+            st = r.get("source_type", "contact")
+            tt = r.get("target_type", "company")
+            sid = r.get("source_id")
+            tid = r.get("target_id")
+            if not sid and r.get("source_email"):
+                sid = email_to_id.get(r["source_email"].lower())
+            if not tid and r.get("target_email"):
+                tid = email_to_id.get(r["target_email"].lower())
+            if not tid and tt == "company":
+                tid = company.id
+            if not sid or not tid:
+                continue
+            rel = Relationship(
+                workspace_id=p.workspace.id,
+                source_type=EntityType(st),
+                source_id=sid,
+                target_type=EntityType(tt),
+                target_id=tid,
+                relation_type=r.get("relation_type") or "works_at",
+            )
+            db.add(rel)
+            db.flush()
+            rel_ids.append(rel.id)
+
+        db.commit()
+        out = {
+            "company_id": company.id,
+            "contact_ids": contact_ids,
+            "relationship_ids": rel_ids,
+        }
+        save(201, out)
+        return out
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def advance_deal(
+    ctx: Context,
+    deal_id: str,
+    stage_slug: str,
+    activity_kind: str | None = "note",
+    activity_subject: str | None = None,
+    activity_body: str | None = None,
+    task_title: str | None = None,
+    task_due_at: datetime | None = None,
+    idempotency_key: str | None = None,
+) -> dict:
+    """Move a deal to a stage by slug; optionally log an activity and create a follow-up task.
+
+    Scopes: deals:write (+ activities:write / tasks:write if those are set).
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "deals:write")
+        args = {
+            "deal_id": deal_id,
+            "stage_slug": stage_slug,
+            "activity_kind": activity_kind,
+            "activity_subject": activity_subject,
+            "activity_body": activity_body,
+            "task_title": task_title,
+        }
+        replay, save = mcp_idempotency(db, p, tool="advance_deal", idempotency_key=idempotency_key, args=args)
+        if replay is not None:
+            return replay
+
+        deal = db.get(Deal, deal_id)
+        if not deal or deal.workspace_id != p.workspace.id:
+            raise RuntimeError("deal not found")
+        stage = db.scalar(
+            select(Stage).where(Stage.pipeline_id == deal.pipeline_id, Stage.slug == stage_slug)
+        )
+        if not stage:
+            raise RuntimeError(f"stage slug not found in deal pipeline: {stage_slug}")
+        old = deal.stage_id
+        deal.stage_id = stage.id
+        if stage.is_won:
+            deal.status = DealStatus.won
+            deal.closed_at = datetime.now(UTC)
+        elif stage.is_lost:
+            deal.status = DealStatus.lost
+            deal.closed_at = datetime.now(UTC)
+        _record_event(
+            db,
+            p,
+            event_type="deal.stage_changed",
+            entity_type=EntityType.deal,
+            entity_id=deal.id,
+            payload={"from_stage_id": old, "to_stage_id": stage.id, "via": "advance_deal"},
+        )
+        activity_id = None
+        if activity_subject or activity_body:
+            _require_scopes(p, "activities:write")
+            act = Activity(
+                workspace_id=p.workspace.id,
+                kind=activity_kind or "note",
+                subject=activity_subject,
+                body=activity_body,
+                entity_type=EntityType.deal,
+                entity_id=deal.id,
+            )
+            db.add(act)
+            db.flush()
+            activity_id = act.id
+        task_id = None
+        if task_title:
+            _require_scopes(p, "tasks:write")
+            t = Task(
+                workspace_id=p.workspace.id,
+                title=task_title,
+                due_at=task_due_at,
+                entity_type=EntityType.deal,
+                entity_id=deal.id,
+                status=TaskStatus.open,
+            )
+            db.add(t)
+            db.flush()
+            task_id = t.id
+        db.commit()
+        db.refresh(deal)
+        out = {
+            "deal": _serialize(deal),
+            "stage_slug": stage_slug,
+            "activity_id": activity_id,
+            "task_id": task_id,
+        }
+        save(200, out)
+        return out
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def log_interaction(
+    ctx: Context,
+    kind: str,
+    subject: str | None = None,
+    body: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    note_body: str | None = None,
+    occurred_at: datetime | None = None,
+    idempotency_key: str | None = None,
+) -> dict:
+    """Log a call/email/meeting activity; optionally attach a note on the same entity.
+
+    kind: call | meeting | email_outbound | email_inbound | note | other
+    Scopes: activities:write (+ notes:write if note_body set).
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "activities:write")
+        args = {
+            "kind": kind,
+            "subject": subject,
+            "body": body,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "note_body": note_body,
+        }
+        replay, save = mcp_idempotency(db, p, tool="log_interaction", idempotency_key=idempotency_key, args=args)
+        if replay is not None:
+            return replay
+        et = EntityType(entity_type) if entity_type else None
+        act = Activity(
+            workspace_id=p.workspace.id,
+            kind=kind,
+            subject=subject,
+            body=body,
+            entity_type=et,
+            entity_id=entity_id,
+            occurred_at=occurred_at or datetime.now(UTC),
+        )
+        db.add(act)
+        db.flush()
+        _record_event(
+            db,
+            p,
+            event_type="activity.created",
+            entity_type=et or EntityType.activity,
+            entity_id=act.id if et is None else (entity_id or act.id),
+            payload={"activity_id": act.id, "via": "log_interaction"},
+        )
+        note_id = None
+        if note_body and entity_type and entity_id:
+            _require_scopes(p, "notes:write")
+            n = Note(
+                workspace_id=p.workspace.id,
+                body=note_body,
+                entity_type=et,
+                entity_id=entity_id,
+            )
+            db.add(n)
+            db.flush()
+            note_id = n.id
+        db.commit()
+        out = {"activity_id": act.id, "note_id": note_id}
+        save(201, out)
+        return out
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# P2: Leads, views, quotes
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def create_lead(
+    ctx: Context,
+    email: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    company_name: str | None = None,
+    company_domain: str | None = None,
+    source: str | None = None,
+    phone: str | None = None,
+    title: str | None = None,
+    score: float | None = None,
+    tags: list[str] | None = None,
+    external_id: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict:
+    """Create an inbound lead. Scopes: leads:write."""
+    from app.models import Lead, LeadStatus
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "leads:write")
+        args = {
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "company_name": company_name,
+            "company_domain": company_domain,
+            "source": source,
+        }
+        replay, save = mcp_idempotency(db, p, tool="create_lead", idempotency_key=idempotency_key, args=args)
+        if replay is not None:
+            return replay
+        row = Lead(
+            workspace_id=p.workspace.id,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            company_name=company_name,
+            company_domain=company_domain,
+            source=source,
+            phone=phone,
+            title=title,
+            score=score,
+            tags=tags or [],
+            external_id=external_id,
+            status=LeadStatus.new,
+        )
+        db.add(row)
+        db.flush()
+        _record_event(
+            db, p, event_type="lead.created", entity_type=EntityType.lead, entity_id=row.id, payload={"via": "mcp"}
+        )
+        db.commit()
+        db.refresh(row)
+        out = _serialize(row)
+        save(201, out)
+        return out
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def search_leads(
+    ctx: Context,
+    query: str | None = None,
+    status: str | None = None,
+    email: str | None = None,
+    limit: int = 25,
+) -> list[dict]:
+    """Search leads. Scopes: leads:read."""
+    from app.models import Lead
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "leads:read")
+        q = select(Lead).where(Lead.workspace_id == p.workspace.id, Lead.deleted_at.is_(None))
+        if status:
+            q = q.where(Lead.status == status)
+        if email:
+            q = q.where(func.lower(Lead.email) == email.lower())
+        if query:
+            like = f"%{query.lower()}%"
+            q = q.where(
+                or_(
+                    func.lower(Lead.first_name).like(like),
+                    func.lower(Lead.last_name).like(like),
+                    func.lower(Lead.email).like(like),
+                    func.lower(Lead.company_name).like(like),
+                )
+            )
+        q = q.order_by(Lead.created_at.desc()).limit(min(limit, 200))
+        return [_serialize(r) for r in db.scalars(q).all()]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def convert_lead(
+    ctx: Context,
+    lead_id: str,
+    create_company: bool = True,
+    create_deal: bool = False,
+    deal_name: str | None = None,
+    pipeline_id: str | None = None,
+    amount: float | None = None,
+) -> dict:
+    """Convert lead → contact (+ company/deal). Scopes: leads:write, contacts:write."""
+    from app.models import Lead
+    from app.services.leads import convert_lead as _convert
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "leads:write")
+        _require_scopes(p, "contacts:write")
+        row = db.get(Lead, lead_id)
+        if not row or row.workspace_id != p.workspace.id:
+            raise RuntimeError("lead not found")
+        return _convert(
+            db,
+            p,
+            row,
+            create_company=create_company,
+            create_deal=create_deal,
+            deal_name=deal_name,
+            pipeline_id=pipeline_id,
+            amount=amount,
+        )
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_views(ctx: Context) -> list[dict]:
+    """List saved views (seeds defaults). Scopes: views:read."""
+    from app.models import SavedView
+    from app.routers.views import ensure_default_views
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "views:read")
+        ensure_default_views(db, p.workspace.id)
+        rows = db.scalars(
+            select(SavedView).where(
+                SavedView.workspace_id == p.workspace.id,
+                SavedView.deleted_at.is_(None),
+            )
+        ).all()
+        return [_serialize(r) for r in rows]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def run_view(ctx: Context, view_slug: str, limit: int = 50) -> dict:
+    """Run a saved view by slug (e.g. open_deals, stale_deals, new_leads). Scopes: views:read."""
+    from app.models import SavedView
+    from app.routers.views import ensure_default_views
+    from app.services.views import run_view as _run
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "views:read")
+        ensure_default_views(db, p.workspace.id)
+        row = db.scalar(
+            select(SavedView).where(
+                SavedView.workspace_id == p.workspace.id,
+                SavedView.slug == view_slug,
+                SavedView.deleted_at.is_(None),
+            )
+        )
+        if not row:
+            raise RuntimeError(f"view not found: {view_slug}")
+        items = _run(
+            db,
+            p.workspace.id,
+            entity_type=row.entity_type,
+            filters=row.filters or [],
+            sort=row.sort or [],
+            limit=limit,
+        )
+        return {
+            "view": row.slug,
+            "entity_type": row.entity_type,
+            "count": len(items),
+            "items": [_serialize(i) for i in items],
+        }
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def create_quote(
+    ctx: Context,
+    deal_id: str,
+    name: str,
+    lines: list[dict] | None = None,
+    currency: str = "USD",
+    notes: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict:
+    """Create a draft quote on a deal with optional line items.
+    lines: [{name, unit_price, quantity?, product_id?}]. Scopes: quotes:write.
+    """
+    from app.models import Deal, Product, Quote, QuoteLineItem
+    from app.schemas import QuoteLineIn
+    from app.routers.quotes import _materialize_line, _recalc
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "quotes:write")
+        args = {"deal_id": deal_id, "name": name, "lines": lines}
+        replay, save = mcp_idempotency(db, p, tool="create_quote", idempotency_key=idempotency_key, args=args)
+        if replay is not None:
+            return replay
+        deal = db.get(Deal, deal_id)
+        if not deal or deal.workspace_id != p.workspace.id:
+            raise RuntimeError("deal not found")
+        max_v = db.scalar(
+            select(func.coalesce(func.max(Quote.version), 0)).where(
+                Quote.deal_id == deal.id, Quote.deleted_at.is_(None)
+            )
+        )
+        row = Quote(
+            workspace_id=p.workspace.id,
+            deal_id=deal.id,
+            name=name,
+            version=int(max_v or 0) + 1,
+            currency=currency,
+            notes=notes,
+        )
+        db.add(row)
+        db.flush()
+        for raw in lines or []:
+            line = QuoteLineIn(**raw)
+            fields = _materialize_line(db, p.workspace.id, line)
+            db.add(QuoteLineItem(quote_id=row.id, **fields))
+        db.flush()
+        _recalc(db, row)
+        db.commit()
+        db.refresh(row)
+        out = _serialize(row)
+        save(201, out)
+        return out
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def set_quote_status(
+    ctx: Context,
+    quote_id: str,
+    status: str,
+    sync_deal_amount: bool = False,
+) -> dict:
+    """Set quote status (draft|sent|accepted|rejected|expired). Scopes: quotes:write."""
+    from app.models import Deal, Quote, QuoteStatus
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "quotes:write")
+        row = db.get(Quote, quote_id)
+        if not row or row.workspace_id != p.workspace.id:
+            raise RuntimeError("quote not found")
+        st = QuoteStatus(status)
+        row.status = st
+        now = datetime.now(UTC)
+        if st == QuoteStatus.sent:
+            row.sent_at = now
+        if st == QuoteStatus.accepted:
+            row.accepted_at = now
+            if sync_deal_amount:
+                deal = db.get(Deal, row.deal_id)
+                if deal:
+                    deal.amount = row.total
+                    deal.currency = row.currency
+        db.commit()
+        db.refresh(row)
+        return _serialize(row)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_policies(ctx: Context) -> dict:
+    """Read workspace policies (approvals, required_fields, auto_tasks, block)."""
+    from app.services.policies import get_policies
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        return {"workspace_id": p.workspace.id, "policies": get_policies(p.workspace)}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def start_job(ctx: Context, job_type: str, input: dict | None = None, run_async: bool = True) -> dict:
+    """Start an async job (ingest|export|merge|custom). Scopes: jobs:write."""
+    from app.services.jobs import create_job, enqueue, _run_job
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "jobs:write")
+        job = create_job(
+            db,
+            workspace_id=p.workspace.id,
+            job_type=job_type,
+            input_data=input or {},
+            actor_user_id=p.user_id,
+            actor_api_key_id=p.api_key_id,
+        )
+        if run_async:
+            enqueue(job.id)
+        else:
+            _run_job(job.id)
+            db.refresh(job)
+        return {
+            "id": job.id,
+            "status": job.status.value,
+            "job_type": job.job_type,
+            "progress": float(job.progress or 0),
+        }
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_job(ctx: Context, job_id: str) -> dict:
+    """Poll a job by id. Scopes: jobs:read."""
+    from app.models import Job
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "jobs:read")
+        job = db.get(Job, job_id)
+        if not job or job.workspace_id != p.workspace.id:
+            raise RuntimeError("job not found")
+        return {
+            "id": job.id,
+            "status": job.status.value,
+            "job_type": job.job_type,
+            "progress": float(job.progress or 0),
+            "result": job.result or {},
+            "error": job.error,
+        }
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def entity_as_of(ctx: Context, entity_type: str, entity_id: str, ts: str) -> dict:
+    """Reconstruct entity state as of an ISO timestamp via timeline. Scopes: timeline:read."""
+    from app.services.forensics import entity_as_of as _as_of
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "timeline:read")
+        at = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return _as_of(db, p.workspace.id, entity_type, entity_id, at)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def search_audit(
+    ctx: Context,
+    action: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    limit: int = 50,
+) -> dict:
+    """Search the audit log. Scopes: timeline:read."""
+    from app.services.forensics import search_audit as _search
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "timeline:read")
+        return {
+            "items": _search(
+                db,
+                p.workspace.id,
+                action=action,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                limit=limit,
+            )
+        }
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def import_crm(
+    ctx: Context,
+    source: str,
+    payload: dict | list,
+    mapping: dict | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """One-shot CRM import. source: hubspot|salesforce|pipedrive|attio|generic.
+    Scopes: export:write. Prefer dry_run=true first.
+    """
+    from app.services.importers import run_crm_import
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "export:write")
+        result = run_crm_import(
+            db, p, source=source, payload=payload, mapping=mapping, dry_run=dry_run
+        )
+        return {
+            "source": result.source,
+            "dry_run": result.dry_run,
+            "created": result.created,
+            "updated": result.updated,
+            "skipped": result.skipped,
+            "errors": result.errors,
+        }
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Custom fields (workspace-tunable schema on core entities)
+# ---------------------------------------------------------------------------
+
+_ALLOWED_FIELD_TYPES = {"string", "text", "number", "bool", "date", "url", "email", "select"}
+
+
+def _require_adminish(principal: Principal) -> None:
+    """Custom-field mutations match REST: owner/admin only."""
+    from app.models import MemberRole
+
+    role = principal.role
+    role_v = role.value if hasattr(role, "value") else str(role)
+    if role_v not in {MemberRole.owner.value, MemberRole.admin.value, "owner", "admin"}:
+        raise RuntimeError(
+            "custom field mutations require owner/admin API key role; "
+            "suggestion: mint a key with role=owner|admin"
+        )
+
+
+@mcp.tool()
+def list_custom_fields(
+    ctx: Context,
+    entity_type: str | None = None,
+) -> list[dict]:
+    """List workspace custom field definitions. Optional entity_type filter
+    (contact|company|deal|…). Scopes: custom_fields:read.
+    """
+    from app.models import CustomFieldDefinition, EntityType
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:read")
+        q = select(CustomFieldDefinition).where(
+            CustomFieldDefinition.workspace_id == p.workspace.id
+        )
+        if entity_type:
+            try:
+                et = EntityType(entity_type)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"unknown entity_type {entity_type!r}; "
+                    f"use one of {[e.value for e in EntityType]}"
+                ) from exc
+            q = q.where(CustomFieldDefinition.entity_type == et)
+        q = q.order_by(CustomFieldDefinition.entity_type, CustomFieldDefinition.name)
+        return [_serialize(r) for r in db.scalars(q).all()]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def create_custom_field(
+    ctx: Context,
+    entity_type: str,
+    name: str,
+    label: str,
+    field_type: str = "string",
+    required: bool = False,
+    options: list[str] | None = None,
+    description: str | None = None,
+    default_value: dict | None = None,
+) -> dict:
+    """Define a custom field on a core entity (contact, company, deal, …).
+    Values are stored on each row's `data` JSONB under this name.
+    field_type: string|text|number|bool|date|url|email|select.
+    Requires owner/admin role + custom_fields:write.
+    """
+    from app.models import CustomFieldDefinition, EntityType
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:write")
+        _require_adminish(p)
+        if field_type not in _ALLOWED_FIELD_TYPES:
+            raise RuntimeError(
+                f"field_type must be one of: {sorted(_ALLOWED_FIELD_TYPES)}"
+            )
+        if not name or not name[0].islower() or not all(c.isalnum() or c == "_" for c in name):
+            raise RuntimeError("name must be snake_case starting with a letter (e.g. linkedin_url)")
+        try:
+            et = EntityType(entity_type)
+        except ValueError as exc:
+            raise RuntimeError(f"unknown entity_type {entity_type!r}") from exc
+        row = CustomFieldDefinition(
+            workspace_id=p.workspace.id,
+            entity_type=et,
+            name=name,
+            label=label,
+            field_type=field_type,
+            required=required,
+            default_value=default_value or {},
+            options=options or [],
+            description=description,
+        )
+        db.add(row)
+        try:
+            db.flush()
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            raise RuntimeError(
+                f"a field named '{name}' already exists on {entity_type}"
+            ) from exc
+        db.commit()
+        db.refresh(row)
+        return _serialize(row)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def update_custom_field(
+    ctx: Context,
+    field_id: str,
+    label: str | None = None,
+    field_type: str | None = None,
+    required: bool | None = None,
+    options: list[str] | None = None,
+    description: str | None = None,
+    default_value: dict | None = None,
+) -> dict:
+    """Patch a custom field definition. Cannot rename `name` or change entity_type
+    (delete + recreate). Requires owner/admin + custom_fields:write.
+    """
+    from app.models import CustomFieldDefinition
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:write")
+        _require_adminish(p)
+        row = db.get(CustomFieldDefinition, field_id)
+        if not row or row.workspace_id != p.workspace.id:
+            raise RuntimeError(f"custom field not found: {field_id}")
+        if field_type is not None:
+            if field_type not in _ALLOWED_FIELD_TYPES:
+                raise RuntimeError(
+                    f"field_type must be one of: {sorted(_ALLOWED_FIELD_TYPES)}"
+                )
+            row.field_type = field_type
+        if label is not None:
+            row.label = label
+        if required is not None:
+            row.required = required
+        if options is not None:
+            row.options = options
+        if description is not None:
+            row.description = description
+        if default_value is not None:
+            row.default_value = default_value
+        db.commit()
+        db.refresh(row)
+        return _serialize(row)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def delete_custom_field(ctx: Context, field_id: str) -> dict:
+    """Delete a custom field definition (does not scrub values already written
+    into row `data`). Requires owner/admin + custom_fields:write.
+    """
+    from app.models import CustomFieldDefinition
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:write")
+        _require_adminish(p)
+        row = db.get(CustomFieldDefinition, field_id)
+        if not row or row.workspace_id != p.workspace.id:
+            raise RuntimeError(f"custom field not found: {field_id}")
+        db.delete(row)
+        db.commit()
+        return {"ok": True, "deleted": field_id}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_object_types(ctx: Context) -> list[dict]:
+    """List workspace custom object types (moldable model). Scopes: custom_fields:read."""
+    from app.models import CustomObjectType
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:read")
+        q = (
+            select(CustomObjectType)
+            .where(
+                CustomObjectType.workspace_id == p.workspace.id,
+                CustomObjectType.deleted_at.is_(None),
+            )
+            .order_by(CustomObjectType.slug)
+        )
+        return [_serialize(r) for r in db.scalars(q).all()]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def create_object_type(
+    ctx: Context,
+    name: str,
+    slug: str,
+    fields: list[dict] | None = None,
+    description: str | None = None,
+) -> dict:
+    """Define a custom object type. fields: [{name, label, type, required?}]. Scopes: custom_fields:write."""
+    from app.models import CustomObjectType
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:write")
+        row = CustomObjectType(
+            workspace_id=p.workspace.id,
+            name=name,
+            slug=slug,
+            description=description,
+            fields=fields or [],
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return _serialize(row)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def upsert_record(
+    ctx: Context,
+    object_slug: str,
+    name: str | None = None,
+    values: dict | None = None,
+    external_id: str | None = None,
+    related_entity_type: str | None = None,
+    related_entity_id: str | None = None,
+) -> dict:
+    """Create/update a custom record by external_id. Scopes: custom_fields:write."""
+    from app.models import CustomObjectType, CustomRecord
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:write")
+        t = db.scalar(
+            select(CustomObjectType).where(
+                CustomObjectType.workspace_id == p.workspace.id,
+                CustomObjectType.slug == object_slug,
+                CustomObjectType.deleted_at.is_(None),
+            )
+        )
+        if not t:
+            raise RuntimeError(f"object type not found: {object_slug}")
+        existing = None
+        if external_id:
+            existing = db.scalar(
+                select(CustomRecord).where(
+                    CustomRecord.workspace_id == p.workspace.id,
+                    CustomRecord.object_slug == object_slug,
+                    CustomRecord.external_id == external_id,
+                )
+            )
+        if existing:
+            if name is not None:
+                existing.name = name
+            if values:
+                existing.values = {**(existing.values or {}), **values}
+            if related_entity_type:
+                existing.related_entity_type = related_entity_type
+            if related_entity_id:
+                existing.related_entity_id = related_entity_id
+            db.commit()
+            db.refresh(existing)
+            return _serialize(existing)
+        row = CustomRecord(
+            workspace_id=p.workspace.id,
+            object_type_id=t.id,
+            object_slug=object_slug,
+            name=name,
+            external_id=external_id,
+            values=values or {},
+            related_entity_type=related_entity_type,
+            related_entity_id=related_entity_id,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return _serialize(row)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def search_records(
+    ctx: Context,
+    object_slug: str,
+    query: str | None = None,
+    limit: int = 25,
+) -> list[dict]:
+    """Search custom records. Scopes: custom_fields:read."""
+    from app.models import CustomRecord
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "custom_fields:read")
+        q = select(CustomRecord).where(
+            CustomRecord.workspace_id == p.workspace.id,
+            CustomRecord.object_slug == object_slug,
+            CustomRecord.deleted_at.is_(None),
+        )
+        if query:
+            like = f"%{query.lower()}%"
+            q = q.where(
+                or_(
+                    func.lower(CustomRecord.name).like(like),
+                    func.lower(CustomRecord.external_id).like(like),
+                )
+            )
+        q = q.order_by(CustomRecord.created_at.desc()).limit(min(limit, 200))
+        return [_serialize(r) for r in db.scalars(q).all()]
+    finally:
+        db.close()
+
+
 @mcp.tool()
 def describe_schema(ctx: Context) -> dict:
-    """Return a summary of entities, fields, and event types so the agent can introspect."""
+    """Return core entity manifest plus this workspace's custom fields and
+    custom object types so the agent can introspect tunable schema.
+    """
     from app import __version__
+    from app.models import CustomFieldDefinition, CustomObjectType
+    from app.protocol import protocol_manifest
     from app.routers.schema import _ENTITIES, _EVENT_TYPES  # local import to avoid cycles
 
-    return {
-        "version": __version__,
-        "entities": [e.model_dump() for e in _ENTITIES],
-        "event_types": list(_EVENT_TYPES),
-    }
+    p, db = _principal_from_ctx(ctx)
+    try:
+        custom_fields = [
+            _serialize(r)
+            for r in db.scalars(
+                select(CustomFieldDefinition)
+                .where(CustomFieldDefinition.workspace_id == p.workspace.id)
+                .order_by(CustomFieldDefinition.entity_type, CustomFieldDefinition.name)
+            ).all()
+        ]
+        object_types = [
+            _serialize(r)
+            for r in db.scalars(
+                select(CustomObjectType)
+                .where(
+                    CustomObjectType.workspace_id == p.workspace.id,
+                    CustomObjectType.deleted_at.is_(None),
+                )
+                .order_by(CustomObjectType.slug)
+            ).all()
+        ]
+        return {
+            "version": __version__,
+            "protocols": protocol_manifest(),
+            "entities": [e.model_dump() for e in _ENTITIES],
+            "event_types": list(_EVENT_TYPES),
+            "custom_fields": custom_fields,
+            "custom_object_types": object_types,
+            "hints": [
+                "Prefer custom_fields for properties on contact/company/deal.",
+                "Prefer custom_object_types for new nouns (Partner, Part, Milestone).",
+                "Store values on row `data` for custom fields; use upsert_record for object records.",
+                "Do not invent field names — use custom_fields + entities from this payload.",
+            ],
+        }
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------

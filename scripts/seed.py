@@ -85,6 +85,7 @@ def main():
             prefix=prefix,
             key_hash=digest,
             role=MemberRole.owner,
+            scopes=["*"],
         )
         db.add(key)
         db.commit()

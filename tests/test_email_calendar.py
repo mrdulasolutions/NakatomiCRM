@@ -191,7 +191,8 @@ def test_email_send_persists_activity(client, workspace, monkeypatch):
             "from_address": "me@example.com",
         },
     )
-    with patch("app.services.email_io.send_email") as mock_send:
+    # Router binds send_email at import time — patch the name it calls.
+    with patch("app.routers.email.send_email") as mock_send:
         r = client.post(
             "/email/send",
             headers=h,
