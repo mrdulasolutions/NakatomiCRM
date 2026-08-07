@@ -2,14 +2,21 @@
 
 Nakatomi exposes an MCP server at `/mcp` using streamable HTTP transport.
 
+**Auth is required at the HTTP layer.** Unauthenticated `POST /mcp` returns
+**401** with `WWW-Authenticate` (and OAuth protected-resource metadata). Clients
+that support OAuth should prompt a login; clients that use static keys must send
+`Authorization: Bearer nk_…` on every request.
+
 **Two auth modes, pick the one your client supports:**
 
 - **OAuth 2.1** — what Claude Desktop's "Add Custom Connector" GUI and
   ChatGPT's Custom Connectors do. The client discovers our auth server via
   `/.well-known/oauth-authorization-server`, runs the PKCE authorization-code
   flow in the browser, and gets back an access token + refresh token.
-- **Static bearer API key** — what Claude Code, Cursor, and raw MCP clients
-  use. Paste `Authorization: Bearer nk_...` in the MCP client config.
+- **Static bearer API key** — what Claude Code, Cursor, Grok (manual headers),
+  and raw MCP clients use. Paste `Authorization: Bearer nk_...` in the MCP
+  client config. If the UI never asks for auth, it is not discovering OAuth —
+  you must supply the header yourself.
 
 ## Tools
 

@@ -97,9 +97,8 @@ def authorization_server_metadata(request: Request) -> dict:
     }
 
 
-@router.get("/.well-known/oauth-protected-resource", include_in_schema=False)
-def protected_resource_metadata(request: Request) -> dict:
-    """RFC 9728 — tells clients which auth server protects this API."""
+def _protected_resource_body(request: Request) -> dict:
+    """RFC 9728 body — shared by base and /mcp path variants."""
     iss = _issuer(request)
     return {
         "resource": iss,
@@ -107,6 +106,17 @@ def protected_resource_metadata(request: Request) -> dict:
         "scopes_supported": ["mcp"],
         "bearer_methods_supported": ["header"],
     }
+
+
+@router.get("/.well-known/oauth-protected-resource", include_in_schema=False)
+@router.get("/.well-known/oauth-protected-resource/mcp", include_in_schema=False)
+def protected_resource_metadata(request: Request) -> dict:
+    """RFC 9728 — tells clients which auth server protects this API.
+
+    Also served under ``.../mcp`` because some MCP SDKs build the metadata URL
+    as ``/.well-known/oauth-protected-resource`` + resource path.
+    """
+    return _protected_resource_body(request)
 
 
 # ---------------------------------------------------------------------------

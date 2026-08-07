@@ -17,10 +17,14 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from pydantic import AnyHttpUrl
 from sqlalchemy import func, or_, select
 
+from app.config import settings
 from app.db import SessionLocal
 from app.deps import Principal, mcp_idempotency
 from app.models import (
@@ -57,6 +61,56 @@ from app.services.memory import enabled_connectors, get_connector
 
 log = logging.getLogger("nakatomi.mcp")
 
+
+def _public_base_url() -> str:
+    """Issuer / resource base for MCP OAuth discovery (set PUBLIC_BASE_URL in prod)."""
+    base = (settings.PUBLIC_BASE_URL or "").strip().rstrip("/")
+    return base or "http://localhost:8000"
+
+
+class NakatomiTokenVerifier:
+    """Validate Bearer tokens for MCP HTTP transport.
+
+    Accepts workspace API keys and OAuth access tokens (both are ``nk_…``
+    rows in ``api_keys``). Invalid/missing tokens make the transport return
+    **401** with ``WWW-Authenticate`` so clients prompt for auth instead of
+    connecting anonymously and only failing later inside tool handlers.
+    """
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not token or not token.startswith("nk_"):
+            return None
+        db = SessionLocal()
+        try:
+            key = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(token)))
+            if not key or key.revoked_at is not None:
+                return None
+            if key.expires_at is not None:
+                exp = key.expires_at
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=UTC)
+                if exp < datetime.now(UTC):
+                    return None
+            scopes = list(normalize_scopes(key.scopes))
+            # Advertise mcp scope for clients that request it; * already full access.
+            if "mcp" not in scopes:
+                scopes.append("mcp")
+            expires_at = None
+            if key.expires_at is not None:
+                exp = key.expires_at
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=UTC)
+                expires_at = int(exp.timestamp())
+            return AccessToken(
+                token=token,
+                client_id=key.prefix or key.id,
+                scopes=scopes,
+                expires_at=expires_at,
+            )
+        finally:
+            db.close()
+
+
 # Two non-default settings:
 #  - streamable_http_path='/'. Default is '/mcp', which when mounted under
 #    our '/mcp' prefix would make the public URL /mcp/mcp. MCP clients
@@ -66,10 +120,23 @@ log = logging.getLogger("nakatomi.mcp")
 #    Railway domain (or any remote host) gets rejected with a 500.
 #    We're behind Railway's edge with TLS termination — the DNS-rebinding
 #    attack model assumes a local-only server, which isn't our deploy.
+#  - auth + token_verifier: HTTP 401 until a valid Bearer nk_… is presented
+#    (OAuth 2.1 discovery still via app/.well-known routes).
+_base = _public_base_url()
 mcp = FastMCP(
     "Nakatomi CRM",
     streamable_http_path="/",
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    token_verifier=NakatomiTokenVerifier(),
+    auth=AuthSettings(
+        issuer_url=AnyHttpUrl(_base),
+        resource_server_url=AnyHttpUrl(_base),
+        # Empty: any valid nk_ key is enough; tool scopes still enforced in-handler.
+        required_scopes=[],
+        service_documentation_url=AnyHttpUrl(
+            "https://github.com/mrdulasolutions/NakatomiCRM/blob/main/docs/MCP.md"
+        ),
+    ),
 )
 
 
