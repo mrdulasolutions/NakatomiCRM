@@ -49,7 +49,7 @@ After deploy, open `/health` — expect `"version":"1.0.0"`.
 ### Agent MCP (important)
 
 1. Create a workspace API key: `POST /workspace/api-keys` (role owner/admin, scopes `*`).
-2. Point your MCP client at **`https://<your-domain>/mcp`** (not the site root).
+2. Point your MCP client at **`https://YOUR-DOMAIN.up.railway.app/mcp`** (not the site root).
 3. Header: `Authorization: Bearer nk_…`
 
 Bare `/mcp` and `/mcp/` both work. Do not use the welcome URL alone as the MCP endpoint.
