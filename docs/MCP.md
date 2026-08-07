@@ -51,7 +51,14 @@ Nakatomi exposes an MCP server at `/mcp` using streamable HTTP transport.
 Open *Settings → Connectors → Add custom connector*:
 
 - **Name:** Nakatomi
-- **URL:** `https://your-app.up.railway.app/mcp`
+- **URL:** `https://your-app.up.railway.app/mcp`  
+  (trailing slash optional — bare `/mcp` is rewritten server-side so clients
+  that skip POST redirects still work)
+- **Auth:** `Authorization: Bearer nk_…` (workspace API key from
+  `POST /workspace/api-keys` or the welcome/bootstrap flow). JWT alone is not
+  enough for MCP tools.
+- **Do not** point the connector at the site root (`https://…railway.app/`) —
+  that only serves the welcome/discovery page and returns **405** on POST.
 
 Click *Connect*. Claude opens a browser tab, the Nakatomi login page
 appears, you sign in with your Nakatomi email + password, pick a workspace

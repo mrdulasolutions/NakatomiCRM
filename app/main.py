@@ -460,6 +460,10 @@ app.include_router(welcome.router)
 
 
 # MCP server mounted at /mcp.
+# Starlette Mount redirects bare ``/mcp`` → ``/mcp/`` with 307. Many MCP
+# clients (including some Grok / connector stacks) POST without a trailing
+# slash and do **not** re-POST after redirect, so initialize never succeeds.
+# Rewrite path in-scope (no HTTP redirect) so both URLs work.
 try:
     from app.mcp_server import build_asgi_app
 
@@ -468,6 +472,24 @@ try:
 except Exception as exc:  # noqa: BLE001
     log.warning("MCP server failed to mount: %s", exc)
 
+
+class _McpTrailingSlashFix:
+    """ASGI wrapper: ``/mcp`` is rewritten to ``/mcp/`` (no HTTP redirect)."""
+
+    def __init__(self, asgi_app):
+        self.app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("path") == "/mcp":
+            scope = dict(scope)
+            scope["path"] = "/mcp/"
+            if "raw_path" in scope:
+                scope["raw_path"] = b"/mcp/"
+        await self.app(scope, receive, send)
+
+
+# Keep the public name ``app`` for uvicorn ``app.main:app``.
+app = _McpTrailingSlashFix(app)  # type: ignore[assignment]
 
 # Root path "/" is owned by app/routers/welcome.py — fresh installs get
 # the welcome page, initialized installs get the JSON discovery doc.
