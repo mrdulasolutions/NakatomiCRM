@@ -11,21 +11,23 @@ The button was previously wired to the generic
 required users to add Postgres and paste a `SECRET_KEY` by hand. That
 fallback is still in git history if we ever need to go back to it.
 
-## v1.0 status (repo vs published template)
+## Live status (2026-08-07)
 
-| Piece | In this repo | Live Railway template |
-| --- | --- | --- |
-| App code + migrations (→ 0015) | Yes on `main` after push | **Only after** the template's source service is redeployed from latest git |
-| `railway.toml` (Dockerfile build, `/health`, 300s timeout, alembic on start) | Yes | Inherits from repo on next deploy |
-| Template **variable defaults** (OTel/SSO/`PUBLIC_BASE_URL`) | Documented below | **Dashboard republish required** — git does not auto-update Railway's published template form |
-| One-click URL | Unchanged: `https://railway.com/deploy/nakatomicrm` | Same URL; image version follows last template redeploy |
+| Piece | Status |
+| --- | --- |
+| One-click URL | https://railway.com/deploy/nakatomicrm (**PUBLISHED**) |
+| Demo / source project | https://railway.com/project/f5806f53-6506-4dfc-8b9e-6dd826ee46d9 (`NakatomiCRM`) |
+| Public demo domain | https://nakatomi-production.up.railway.app |
+| App git | `mrdulasolutions/NakatomiCRM@main` (Dockerfile + `railway.toml`) |
+| Marketplace metadata | Updated via `railway templates publish nakatomicrm` (description, readme, demo project) |
+| Code on new installs | Pulled from **GitHub `main`** at deploy time — keep `main` green |
 
-**To refresh the live 1-click after a release:**
+**Refresh checklist (no SemVer bump required for ops fixes):**
 
-1. Push `main` (or the template branch Railway tracks).
-2. In the **source** Nakatomi project: redeploy the app service (pulls Dockerfile + `alembic upgrade head` through 0015).
-3. Project settings → **Publish as Template** (or "Update template") so new installs get any new optional env vars.
-4. Smoke: `GET /health` → `"version": "1.0.0"`, `GET /auth/sso/providers`.
+1. Push `main`.
+2. Redeploy demo service: `railway up --service nakatomi` (or Railway redeploy).
+3. `railway templates publish nakatomicrm --readme-file docs/RAILWAY_TEMPLATE_README.md --demo-project <project-id> …`
+4. Smoke: `GET /health`, `POST /mcp` initialize (not the site root).
 
 ---
 

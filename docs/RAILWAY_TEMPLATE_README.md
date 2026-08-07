@@ -44,6 +44,14 @@ Public URL: `https://railway.com/deploy/nakatomicrm`
 | `PUBLIC_BASE_URL` | recommended | Set to your Railway domain after first deploy |
 | `OTEL_*` / `SSO_*` | no | Optional observability and human SSO |
 
-After deploy, open `/health` — expect `"version":"1.0.0"`. Mint an API key and point agents at `/mcp`.
+After deploy, open `/health` — expect `"version":"1.0.0"`.
+
+### Agent MCP (important)
+
+1. Create a workspace API key: `POST /workspace/api-keys` (role owner/admin, scopes `*`).
+2. Point your MCP client at **`https://<your-domain>/mcp`** (not the site root).
+3. Header: `Authorization: Bearer nk_…`
+
+Bare `/mcp` and `/mcp/` both work. Do not use the welcome URL alone as the MCP endpoint.
 
 Source: [github.com/mrdulasolutions/NakatomiCRM](https://github.com/mrdulasolutions/NakatomiCRM)
