@@ -58,7 +58,7 @@ def _check_type(name: str, field_type: str, val: Any, options: list) -> str | No
         if not isinstance(val, str) or "@" not in val:
             return f"{name} must be an email string"
     elif field_type == "number":
-        if not isinstance(val, (int, float)):
+        if not isinstance(val, int | float):
             return f"{name} must be a number"
     elif field_type == "bool":
         if not isinstance(val, bool):
@@ -69,9 +69,8 @@ def _check_type(name: str, field_type: str, val: Any, options: list) -> str | No
                 date.fromisoformat(val[:10])
             except ValueError:
                 return f"{name} must be ISO date YYYY-MM-DD"
-        elif not isinstance(val, (date, datetime)):
+        elif not isinstance(val, date | datetime):
             return f"{name} must be a date"
-    elif field_type == "select":
-        if options and val not in options:
-            return f"{name} must be one of {options}"
+    elif field_type == "select" and options and val not in options:
+        return f"{name} must be one of {options}"
     return None
