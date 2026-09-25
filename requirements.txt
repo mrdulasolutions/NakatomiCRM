@@ -26,7 +26,7 @@ python-multipart==0.0.20
 httpx==0.28.1
 
 # MCP streamable-HTTP server mounted at /mcp
-mcp==1.27.0
+mcp==2.2.0
 
 # Optional S3-compatible file storage
 boto3==1.35.84
