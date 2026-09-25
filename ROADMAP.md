@@ -24,7 +24,7 @@ operable by tools, by peer agents, and by long-running multi-agent workflows.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Agents (Claude, Cursor, ChatGPT, custom swarms, REVA, OpenGateway) │
+│  Agents (Claude, Cursor, ChatGPT, custom swarms, OpenGateway) │
 └─────────────┬───────────────────┬───────────────────┬───────────────┘
               │                   │                   │
      ┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
