@@ -25,8 +25,9 @@ for local review.
    - Windows: `start chrome http://localhost:8000/dashboard`
 6. Confirm to the user that the dashboard is up. It uses the same Nakatomi Plaza
    branding as welcome/OAuth (light panels, `/static/nakatomi-plaza-bg.jpg`).
-   Point out the views: timeline stream, recent contacts/companies/deals,
-   webhook delivery log.
+   Point out the four views: **Audit** (timeline + entities + tasks), **Kanban**
+   (pipeline board), **Webhooks** (delivery log), **Memory** (MemoryLink inspector).
+   Full tour with screenshots: https://github.com/mrdulasolutions/NakatomiCRM/wiki/Dashboard
 
 ## Safety
 

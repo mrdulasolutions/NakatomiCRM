@@ -577,8 +577,10 @@ Optional local audit UI: set `DASHBOARD_ENABLED=true` and open `/dashboard` (aut
 
 | Document | What it covers |
 | --- | --- |
+| [**Wiki**](https://github.com/mrdulasolutions/NakatomiCRM/wiki) | Full subsystem docs + **dashboard tour with screenshots** |
 | [**Nakatomi in 5 minutes**](./docs/5-MINUTE-AGENT.md) | Zero → first agent CRM operation |
 | [**Agent OS**](./docs/AGENT-OS.md) | Business-state layer for autonomous workforces (P5/P6) |
+| [**Dashboard**](./docs/DASHBOARD.md) | Audit UI (`/dashboard`) — links to wiki screenshots |
 | [Paperclip reference](./docs/integrations/PAPERCLIP.md) | Workforce interoperability (orchestrator example) |
 | [Architecture](./docs/ARCHITECTURE.md) | System architecture and data flows |
 | [MCP](./docs/MCP.md) | MCP setup and tool reference |
@@ -595,7 +597,7 @@ Optional local audit UI: set `DASHBOARD_ENABLED=true` and open `/dashboard` (aut
 | [Security](./SECURITY.md) | Security policy |
 | [Changelog](./CHANGELOG.md) | Release history |
 
-[Wiki](https://github.com/mrdulasolutions/NakatomiCRM/wiki) — deeper dives on subsystems.
+[Wiki](https://github.com/mrdulasolutions/NakatomiCRM/wiki) — full docs: [Dashboard tour](https://github.com/mrdulasolutions/NakatomiCRM/wiki/Dashboard), Agent OS, MCP, memory, deployment.
 
 ---
 
