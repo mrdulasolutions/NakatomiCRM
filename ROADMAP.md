@@ -24,7 +24,7 @@ operable by tools, by peer agents, and by long-running multi-agent workflows.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Agents (Claude, Cursor, ChatGPT, custom swarms, OpenGateway) │
+│  Agents (Claude, Cursor, ChatGPT, custom swarms, OpenGateway, …) │
 └─────────────┬───────────────────┬───────────────────┬───────────────┘
               │                   │                   │
      ┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
@@ -400,7 +400,7 @@ We will **not** build:
 - [x] Optional `related_entity_type` / `related_entity_id` link to core CRM
 - [ ] First-class relationship graph edges for custom types (use free-form graph for now)
 
-### P4.3 — Vertical extensions (REVA / manufacturing optional)
+### P4.3 — Vertical extensions (optional)
 
 - [x] **Explicit non-goal for core product** — use custom objects / webhooks externally
 - [ ] Installable field packs (optional later)
@@ -468,7 +468,26 @@ Full thesis: [docs/AGENT-OS.md](./docs/AGENT-OS.md).
 - [x] Script in [docs/demos/WORKFORCE-DEMO.md](./docs/demos/WORKFORCE-DEMO.md) + [5-MINUTE-AGENT.md](./docs/5-MINUTE-AGENT.md) takeover section
 - [x] Optional: recorded Paperclip reference demo ([P6.4](#p64--workforce-interoperability-demo))
 
-### P5 status: **SHIPPED** (v1.0.10 demo docs)
+### P5.8 — Decision boundaries (unresolved business decisions)
+
+> **Motivation:** P5.7 proves agent handoff on **known** state. Scenarios like the Brightfield run show a gap: agents surface **ambiguous business reality** and must not silently write asserted CRM truth. That is not the same problem as HITL action approval.
+
+**Design principle:** **HITL approvals govern actions** (`ApprovalRequest`: “may I do this?”). **Decision boundaries govern uncertainty about business state** (“what is actually true here?”).
+
+Keep this a **durable state primitive** that composes with tasks, timeline, audit, `entity_context`, and existing approvals — not a workflow/decision engine.
+
+- [ ] First-class **unresolved business decision** entity (question, status, linked entities)
+- [ ] Explicit **options** (structured choices; not free-text-only)
+- [ ] **Evidence / context** attached (notes, timeline slice, links to related records)
+- [ ] **Blocked work** pointers (tasks, deal updates, or agent actions gated until resolved)
+- [ ] Human **resolution** recorded on timeline + audit (who decided, which option, when)
+- [ ] Subsequent agents discover resolution via REST/MCP + `entity_context` / `explain_change`
+- [ ] Agent policy: **must not** convert unresolved uncertainty into asserted field values without a recorded decision (422 or decision-required path)
+- [ ] MCP + REST parity; scope model aligned with approvals (`decisions:read` / `decisions:write` or compose with existing scopes)
+
+**Non-goals:** Rules engine, BPMN, orchestrator “ask human” replacement, analytics on decision latency.
+
+### P5 status: **SHIPPED** (v1.0.10) **+ P5.8 next**
 
 ---
 
@@ -528,7 +547,7 @@ When a new idea arrives, score it:
 | **v0.7 — Ops** | **Shipped** — jobs; dead letters; time-travel; policies |
 | **v0.8 — Ecosystem** | **Shipped** — multi-CRM import; custom objects |
 | **v1.0 — Production** | **Shipped** — optional OTel; optional SSO; CLI; protocol SLA; docs freeze; SECRET_KEY prod guard |
-| **v1.1+ — Agent OS** | P5 compounds shipped (`entity_context`, actor labels, `agent_activity`); P6 playbook + demo |
+| **v1.1+ — Agent OS** | P5 compounds shipped; P6 playbook + demo; **P5.8 decision boundaries** |
 
 SemVer: breaking MCP/A2A/ACP contract changes require major bump + sunset window announced in `/schema` and CHANGELOG.
 
@@ -548,6 +567,7 @@ SemVer: breaking MCP/A2A/ACP contract changes require major bump + sunset window
 
 | Date | Change |
 | --- | --- |
+| 2026-09-25 | **P5.8 decision boundaries** — roadmap + [AGENT-OS.md](./docs/AGENT-OS.md) (approvals vs business-state uncertainty; Brightfield motivation). Removed third-party vertical name from P4.3 / protocol diagram. |
 | 2026-09-25 | **P5 Agent OS + P6 workforce interoperability** — [docs/AGENT-OS.md](./docs/AGENT-OS.md), [docs/integrations/PAPERCLIP.md](./docs/integrations/PAPERCLIP.md); fixed A2A/ACP status in protocol table. |
 | 2026-08-07 | **v1.0 shipped** — protocol SLA, optional OTel + SSO, operator CLI, docs freeze. |
 | 2026-08-06 | Rebuilt as P0–P4 roadmap from competitive/agent research; added full **MCP + A2A + ACP** protocol stack; preserved shipped foundation; defined v0.4–v1.0 milestones. |

@@ -174,13 +174,20 @@ Example shape (aggregates backed by DB):
 
 **Non-goals:** “AI workforce analytics” product; second orchestration UI; storing **why** work was scheduled.
 
-### 7. Human-in-the-loop
+### 7. Human-in-the-loop vs decision boundaries
 
-**Today:** `ApprovalRequest`, workspace policies, MCP `propose_action` / `decide_approval`, timeline events.
+**Today — action HITL:** `ApprovalRequest`, workspace policies, MCP `propose_action` / `decide_approval`, timeline events. These answer: **“May this agent perform this action?”**
 
-**Next:** Tie workforce demos and `entity_context` to pending approvals on the entity bundle.
+**Next — P5.8 decision boundaries:** First-class **unresolved business decisions** when agents (or data) leave **business-state uncertainty** — e.g. conflicting qualification signals, unknown account ownership, ambiguous deal outcome drivers. The human resolves **what is true**, not merely whether to send an email.
 
-**Non-goals:** Replacing orchestrator “ask human” gateways — compose them in deployment topology instead.
+| Mechanism | Question |
+| --- | --- |
+| **ApprovalRequest** (existing) | May I **do** this action? |
+| **Decision boundary** (P5.8) | What is **true** here? |
+
+**Principle:** Agents must not silently convert uncertainty into asserted CRM truth. Record the decision, attach evidence, block dependent work until resolved, and expose resolution in timeline, audit, and `entity_context` for the next agent.
+
+**Non-goals:** Replacing orchestrator “ask human” gateways — compose them in deployment topology instead. **Non-goals for P5.8:** workflow/BPMN engines; decision analytics dashboards.
 
 ### 8. Composable protocols (MCP + REST + A2A + ACP)
 
@@ -201,6 +208,7 @@ Example shape (aggregates backed by DB):
 | 3 | **P5.6** `agent_activity` | Facts for humans, dashboards, orchestrators |
 | 4 | **P5.4** handoffs + **P5.5** `explain_change` | Multi-agent continuity and trust |
 | 5 | **P5.7** demo scripts | Prove abstraction in AgentLab / 5-minute path |
+| 6 | **P5.8** decision boundaries | Uncertainty → human resolution → durable truth for next agent |
 
 Track items in [ROADMAP.md](../ROADMAP.md) **P5** and **P6**.
 
