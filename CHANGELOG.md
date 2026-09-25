@@ -5,6 +5,18 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **P5 Agent OS:** `entity_context`, `agent_activity`, `explain_change`, handoff REST/MCP; timeline `actor_label`; `GET /agent/*` routes; workforce docs ([AGENT-OS.md](./docs/AGENT-OS.md)).
+
+### Changed
+
+- **Dependencies:** security bumps (FastAPI 0.140.x, pydantic, sqlalchemy, mcp, python-jose, python-multipart, etc.); GitHub Actions v7; `pip-audit` ignores unfixed transitive `ecdsa` (python-jose).
+
+### Fixed
+
+- **CI:** `pip-audit` failures on main; ruff import order in `app/main.py`.
+
 ## [1.0.9] — 2026-09-25 — Dashboard login visibility
 
 ### Fixed

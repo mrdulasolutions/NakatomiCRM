@@ -201,6 +201,31 @@ leads overnight, AE agent moved 3 deals forward."* Transparent, auditable.
 
 **Anti-pattern:** one admin key for every Paperclip agent — you lose attribution and blast radius explodes.
 
+### Handoff + cold takeover (P5.4)
+
+**Goal:** SDR finishes prospecting; AE starts a **new** chat session and continues Acme with full context.
+
+**SDR (end of shift):**
+
+```text
+POST /agent/handoff  (or MCP: log summary + leave timeline clean)
+{
+  "entity_type": "company",
+  "entity_ref": "Acme Corp",
+  "summary": "Qualified — champion is Jane Doe, next step is discovery call",
+  "next_steps": ["Schedule discovery", "Create opportunity if none"]
+}
+```
+
+**AE (fresh session):**
+
+```text
+GET /agent/entity-context?entity_type=company&entity_ref=Acme%20Corp
+# or MCP: entity_context("company", "Acme Corp")
+```
+
+Read `timeline` entries with `actor_label`, open tasks, pending approvals — then act. No shared chat history required.
+
 ### 5. Outbound campaign machine
 
 **Goal:** one agent plans the campaign, another executes, third measures.

@@ -37,9 +37,7 @@ def test_timeline_actor_label(client, workspace):
 
     db = SessionLocal()
     try:
-        key = db.scalars(
-            select(ApiKey).where(ApiKey.workspace_id == workspace["workspace_id"])
-        ).first()
+        key = db.scalars(select(ApiKey).where(ApiKey.workspace_id == workspace["workspace_id"])).first()
         key.name = "research-agent"
         key.data = {"display_name": "Research Agent", "agent_role": "research"}
         db.commit()

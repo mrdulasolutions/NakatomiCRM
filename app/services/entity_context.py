@@ -43,6 +43,7 @@ def _ilike_literal(column, ref: str):
     pattern = f"%{_escape_ilike_literal(ref.strip())}%"
     return column.ilike(pattern, escape="\\")
 
+
 _MODELS: dict[str, type] = {
     "company": Company,
     "contact": Contact,
@@ -144,10 +145,8 @@ def _related_contact_ids(db: Session, workspace_id: str, company_id: str) -> set
         select(Relationship).where(
             Relationship.workspace_id == workspace_id,
             or_(
-                (Relationship.source_type == EntityType.company)
-                & (Relationship.source_id == company_id),
-                (Relationship.target_type == EntityType.company)
-                & (Relationship.target_id == company_id),
+                (Relationship.source_type == EntityType.company) & (Relationship.source_id == company_id),
+                (Relationship.target_type == EntityType.company) & (Relationship.target_id == company_id),
             ),
         )
     ).all()
@@ -260,7 +259,8 @@ def build_entity_context(
 
     if can("tasks:read"):
         tasks = db.scalars(
-            select(Task).where(
+            select(Task)
+            .where(
                 Task.workspace_id == workspace_id,
                 Task.deleted_at.is_(None),
                 Task.status.in_([TaskStatus.open, TaskStatus.in_progress]),
@@ -274,7 +274,8 @@ def build_entity_context(
 
     if can("activities:read"):
         activities = db.scalars(
-            select(Activity).where(
+            select(Activity)
+            .where(
                 Activity.workspace_id == workspace_id,
                 Activity.deleted_at.is_(None),
                 Activity.entity_type == EntityType(et),
@@ -287,7 +288,8 @@ def build_entity_context(
 
     if include_notes and can("notes:read"):
         notes = db.scalars(
-            select(Note).where(
+            select(Note)
+            .where(
                 Note.workspace_id == workspace_id,
                 Note.deleted_at.is_(None),
                 Note.entity_type == EntityType(et),
@@ -300,7 +302,8 @@ def build_entity_context(
 
     if can("approvals:read"):
         pending = db.scalars(
-            select(ApprovalRequest).where(
+            select(ApprovalRequest)
+            .where(
                 ApprovalRequest.workspace_id == workspace_id,
                 ApprovalRequest.deleted_at.is_(None),
                 ApprovalRequest.status == ApprovalStatus.pending,

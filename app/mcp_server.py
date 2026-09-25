@@ -1798,9 +1798,7 @@ def agent_activity(
     try:
         _require_scopes(p, "timeline:read")
         since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
-        until_dt = (
-            datetime.fromisoformat(until.replace("Z", "+00:00")) if until else None
-        )
+        until_dt = datetime.fromisoformat(until.replace("Z", "+00:00")) if until else None
         return build_agent_activity(
             db,
             p.workspace.id,

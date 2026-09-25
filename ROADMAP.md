@@ -177,7 +177,7 @@ We will **not** build:
 - [x] REST: `POST /approvals`, `GET /approvals`, `POST /approvals/{id}/decide`
 - [x] MCP: `propose_action`, `list_pending_approvals`, `decide_approval` (owner/admin or `admin:keys`)
 - [x] Timeline events: `approval.requested`, `approval.decided`, `approval.executed`
-- [ ] A2A: approval decisions can complete or fail an A2A Task (**→ P1**)
+- [x] A2A: approval decisions can complete or fail an A2A Task — see `app/services/approvals.py`
 
 **Why:** Salesforce headless guidance and enterprise buyers both require pause-and-approve for money-moving actions.
 
@@ -452,7 +452,7 @@ Full thesis: [docs/AGENT-OS.md](./docs/AGENT-OS.md).
 ### P5.4 — Handoff primitive
 
 - [x] Handoff JSON + `POST /agent/handoff` returns `entity_context` snapshot
-- [ ] AgentLab recipe update (takeover ritual)
+- [x] AgentLab recipe (takeover ritual)
 
 ### P5.5 — `explain_change`
 
@@ -496,8 +496,8 @@ Full thesis: [docs/AGENT-OS.md](./docs/AGENT-OS.md).
 
 ### P6.5 — Other orchestrator examples
 
-- [ ] Short stubs: no orchestrator (solo agent), custom cron, OpenGateway — same key-per-worker contract
-- [ ] No Nakatomi coupling to assignment source
+- [x] [docs/integrations/ORCHESTRATORS.md](./docs/integrations/ORCHESTRATORS.md) — custom/none/OpenGateway stubs
+- [x] No Nakatomi coupling to assignment source
 
 ### P6 status: **DOCS STARTED** (P6.1 shipped); playbook + demos open
 

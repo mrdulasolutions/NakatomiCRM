@@ -67,6 +67,7 @@ def workspace_timeline(
 def entity_timeline(
     entity_type: EntityType,
     entity_id: str,
+    since: datetime | None = None,
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
     page: Pagination = Depends(get_pagination),
@@ -76,4 +77,6 @@ def entity_timeline(
         TimelineEvent.entity_type == entity_type,
         TimelineEvent.entity_id == entity_id,
     )
+    if since:
+        query = query.where(TimelineEvent.occurred_at >= since)
     return _paginate(db, p.workspace.id, query, page)

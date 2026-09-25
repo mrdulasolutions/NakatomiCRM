@@ -117,9 +117,7 @@ def post_handoff(
 ):
     """Validate handoff + return entity_context snapshot for the receiving agent."""
     try:
-        ctx = build_entity_context(
-            db, p.workspace.id, body.entity_type, body.entity_ref, scopes=p.scopes
-        )
+        ctx = build_entity_context(db, p.workspace.id, body.entity_type, body.entity_ref, scopes=p.scopes)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {

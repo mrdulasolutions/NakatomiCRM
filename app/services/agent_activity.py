@@ -69,10 +69,14 @@ def build_agent_activity(
         if ev.event_type.startswith("activity."):
             activities_logged += 1
 
-    pending_q = select(func.count()).select_from(ApprovalRequest).where(
-        ApprovalRequest.workspace_id == workspace_id,
-        ApprovalRequest.deleted_at.is_(None),
-        ApprovalRequest.status == ApprovalStatus.pending,
+    pending_q = (
+        select(func.count())
+        .select_from(ApprovalRequest)
+        .where(
+            ApprovalRequest.workspace_id == workspace_id,
+            ApprovalRequest.deleted_at.is_(None),
+            ApprovalRequest.status == ApprovalStatus.pending,
+        )
     )
     if agent_api_key_id:
         pending_q = pending_q.where(ApprovalRequest.requested_by_api_key_id == agent_api_key_id)
