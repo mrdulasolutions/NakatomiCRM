@@ -24,7 +24,7 @@ Your agents operate it.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CI](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml/badge.svg)](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-1.0.8-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.10-blue.svg)](./CHANGELOG.md)
 [![MCP](https://img.shields.io/badge/MCP-streamable_HTTP-111111)](./docs/MCP.md)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Self-Host](https://img.shields.io/badge/self--host-ready-2ea44f)](./docs/DEPLOY.md)

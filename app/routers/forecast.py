@@ -33,7 +33,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import Principal, enforce_resource_scope, get_principal
-from app.models import Deal, DealStatus, Stage
+from app.models import Deal, Stage
+from app.services.forecast_roll import rollup_forecast_rows
 
 router = APIRouter(
     prefix="/forecast",
@@ -81,6 +82,9 @@ def forecast(
     period: str = Query(..., description="2026Q2 | 2026-04 | custom:2026-04-01:2026-06-30"),
     pipeline_id: str | None = Query(None),
     owner_user_id: str | None = Query(None),
+    compare_prior: bool = Query(
+        False, description="Include prior period of equal length (weighted_amount delta)"
+    ),
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
 ) -> dict:
@@ -117,76 +121,54 @@ def forecast(
 
     rows = db.execute(base).all()
 
-    totals = {
-        "open_count": 0,
-        "open_amount": 0.0,
-        "weighted_amount": 0.0,
-        "won_count": 0,
-        "won_amount": 0.0,
-        "lost_count": 0,
-        "lost_amount": 0.0,
-    }
-    by_stage: dict[str, dict] = {}
-    by_owner: dict[str, dict] = {}
+    body = rollup_forecast_rows(
+        rows,
+        label=label,
+        start=start,
+        end=end,
+        pipeline_id=pipeline_id,
+        owner_user_id=owner_user_id,
+    )
 
-    for deal, stage in rows:
-        amount = float(deal.amount or 0)
-        # ``Stage.probability`` is stored as a percentage 0..100 (matches the
-        # existing UX); divide once here so weighted amounts are proper sums.
-        prob_frac = float(stage.probability or 0) / 100.0
-        if deal.status == DealStatus.won:
-            totals["won_count"] += 1
-            totals["won_amount"] += amount
-            weight = 1.0
-        elif deal.status == DealStatus.lost:
-            totals["lost_count"] += 1
-            totals["lost_amount"] += amount
-            weight = 0.0
-        else:
-            totals["open_count"] += 1
-            totals["open_amount"] += amount
-            weight = prob_frac
-
-        weighted = amount * weight
-        totals["weighted_amount"] += weighted
-
-        st = by_stage.setdefault(
-            stage.id,
-            {
-                "stage_id": stage.id,
-                "stage_slug": stage.slug,
-                "stage_name": stage.name,
-                "probability": float(stage.probability or 0),
-                "count": 0,
-                "amount": 0.0,
-                "weighted_amount": 0.0,
-            },
+    if compare_prior:
+        span_days = (end - start).days
+        prior_end = start
+        prior_start = prior_end - timedelta(days=span_days)
+        prior_start_dt = datetime.combine(prior_start, datetime.min.time(), tzinfo=UTC)
+        prior_end_dt = datetime.combine(prior_end, datetime.min.time(), tzinfo=UTC)
+        prior_base = (
+            select(Deal, Stage)
+            .join(Stage, Stage.id == Deal.stage_id)
+            .where(
+                Deal.workspace_id == p.workspace.id,
+                Deal.deleted_at.is_(None),
+                Deal.expected_close_date >= prior_start_dt,
+                Deal.expected_close_date < prior_end_dt,
+            )
         )
-        st["count"] += 1
-        st["amount"] += amount
-        st["weighted_amount"] += weighted
-
-        owner_key = deal.owner_user_id or "unassigned"
-        ow = by_owner.setdefault(
-            owner_key,
-            {
-                "owner_user_id": deal.owner_user_id,
-                "count": 0,
-                "amount": 0.0,
-                "weighted_amount": 0.0,
-            },
+        if pipeline_id:
+            prior_base = prior_base.where(Deal.pipeline_id == pipeline_id)
+        if owner_user_id:
+            prior_base = prior_base.where(Deal.owner_user_id == owner_user_id)
+        prior_rows = db.execute(prior_base).all()
+        prior = rollup_forecast_rows(
+            prior_rows,
+            label=f"prior:{prior_start.isoformat()}",
+            start=prior_start,
+            end=prior_end,
+            pipeline_id=pipeline_id,
+            owner_user_id=owner_user_id,
         )
-        ow["count"] += 1
-        ow["amount"] += amount
-        ow["weighted_amount"] += weighted
+        cur_w = body["totals"]["weighted_amount"]
+        prev_w = prior["totals"]["weighted_amount"]
+        body["prior_period"] = {
+            "from": prior["from"],
+            "to": prior["to"],
+            "totals": prior["totals"],
+        }
+        body["trend"] = {
+            "weighted_amount_delta": round(cur_w - prev_w, 2),
+            "weighted_amount_pct": round((cur_w - prev_w) / prev_w * 100, 2) if prev_w else None,
+        }
 
-    return {
-        "period": label,
-        "from": start.isoformat(),
-        "to": (end - timedelta(days=1)).isoformat(),
-        "pipeline_id": pipeline_id,
-        "owner_user_id": owner_user_id,
-        "totals": {k: round(v, 2) if isinstance(v, float) else v for k, v in totals.items()},
-        "by_stage": sorted(by_stage.values(), key=lambda r: r["stage_slug"]),
-        "by_owner": list(by_owner.values()),
-    }
+    return body

@@ -214,8 +214,8 @@ We will **not** build:
   - [x] `morning_briefing`
   - [x] `load_context` (ACP)
 - [x] Tool descriptions include scope requirements (via `_require_scopes` errors + docs)
-- [ ] MCP resource templates (optional): `crm://contact/{id}`, `crm://deal/{id}`
-- [ ] Version MCP tool schemas; deprecate with `sunset` notes in `/schema`
+- [x] MCP resource templates (optional): `crm://contact/{id}`, `crm://deal/{id}`, `crm://company/{id}`
+- [x] Version MCP tool schemas; deprecate with `sunset` notes in `/schema` (`mcp_tools` manifest)
 
 **Non-goal:** one MCP tool per REST endpoint.
 
@@ -319,22 +319,22 @@ We will **not** build:
 
 - [x] `ContactChannel` rows (email/phone/linkedin/other)
 - [x] Company merge (`POST /companies/merge`)
-- [ ] Ingest dry-run (`?dry_run=true`) — carry-forward
+- [x] Ingest dry-run (`dry_run` on POST /ingest)
 - [ ] Attachment ingest + webhook ingest adapters
 
 ### P2.6 — Custom fields v2
 
-- [ ] Runtime validation against field definitions (type, required, enum)
-- [ ] MCP/schema expose validation errors with suggestions
+- [x] Runtime validation against field definitions (type, required, enum) on PATCH
+- [x] MCP/schema expose validation errors with suggestions (422 detail + GET /custom-fields)
 - [ ] (Stretch → P4) Custom **objects**
 
 ### P2.7 — Forecast quality
 
-- [ ] Commit categories
-- [ ] Multi-currency FX
-- [ ] Trend vs prior period
+- [x] Commit categories (`deal.data.commit_category`, `by_commit` rollup)
+- [x] Multi-currency FX (`by_currency` native amounts + fx_note; no conversion)
+- [x] Trend vs prior period (`compare_prior=true`)
 
-### P2 status: **CORE DONE** (v0.6.0) — stretch: custom field validation, forecast polish, ingest dry-run
+### P2 status: **DONE** (v1.0.10 validation + forecast stretch)
 
 ---
 
@@ -356,13 +356,13 @@ We will **not** build:
 - [x] `POST /jobs` + `GET /jobs/{id}` + cancel pending
 - [x] In-process async runner (thread)
 - [x] MCP: `start_job`, `get_job`
-- [ ] Auto-promote large ingest to jobs (threshold)
+- [x] Auto-promote large ingest to jobs (threshold 200 records)
 
 ### P3.3 — Event catalog & dead letters
 
 - [x] Event types already in `/schema` + ACP pack
 - [x] `GET /webhooks/dead-letters` + `POST .../replay`
-- [ ] Full AgentLab recovery recipe (doc later)
+- [x] Full AgentLab recovery recipe — [docs/AGENTLAB-RECOVERY.md](./docs/AGENTLAB-RECOVERY.md)
 
 ### P3.4 — Time-travel & audit search
 
@@ -411,7 +411,7 @@ We will **not** build:
 - [x] Operator CLI (`python -m app` / `nakatomi`) — health, protocols, check-config
 - [x] SSO (Google / GitHub) — optional ([docs/SSO.md](./docs/SSO.md))
 - [ ] Homebrew / full PyPI package polish
-- [ ] Cloudflare edition parity matrix
+- [x] Cloudflare edition parity matrix — [docs/CLOUDFLARE_PARITY.md](./docs/CLOUDFLARE_PARITY.md)
 
 ### P4.5 — Service CRM (only if demand)
 
@@ -465,10 +465,10 @@ Full thesis: [docs/AGENT-OS.md](./docs/AGENT-OS.md).
 
 ### P5.7 — Takeover demo
 
-- [ ] Script in AgentLab or 5-MINUTE-AGENT extension: multi-agent run → stop → new session → `entity_context` continuity
-- [ ] Optional: recorded Paperclip reference demo ([P6.4](#p64--workforce-interoperability-demo))
+- [x] Script in [docs/demos/WORKFORCE-DEMO.md](./docs/demos/WORKFORCE-DEMO.md) + [5-MINUTE-AGENT.md](./docs/5-MINUTE-AGENT.md) takeover section
+- [x] Optional: recorded Paperclip reference demo ([P6.4](#p64--workforce-interoperability-demo))
 
-### P5 status: **CORE SHIPPED** (P5.7 demo scripts open)
+### P5 status: **SHIPPED** (v1.0.10 demo docs)
 
 ---
 
@@ -492,14 +492,14 @@ Full thesis: [docs/AGENT-OS.md](./docs/AGENT-OS.md).
 
 ### P6.4 — Workforce interoperability demo
 
-- [ ] Scripted or recorded: CEO → Research / SDR / AE → Nakatomi snapshot + attributed timeline → takeover via `entity_context`
+- [x] Scripted demo: [docs/demos/WORKFORCE-DEMO.md](./docs/demos/WORKFORCE-DEMO.md)
 
 ### P6.5 — Other orchestrator examples
 
 - [x] [docs/integrations/ORCHESTRATORS.md](./docs/integrations/ORCHESTRATORS.md) — custom/none/OpenGateway stubs
 - [x] No Nakatomi coupling to assignment source
 
-### P6 status: **DOCS STARTED** (P6.1 shipped); playbook + demos open
+### P6 status: **SHIPPED** (playbook + workforce demo)
 
 ---
 

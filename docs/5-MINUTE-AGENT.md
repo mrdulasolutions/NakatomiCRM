@@ -155,6 +155,8 @@ Or MCP: `entity_context("company", "Acme Corp")`.
 
 Mint **separate keys per role** — see [AGENT-WORKFORCE-KEYS.md](./AGENT-WORKFORCE-KEYS.md).
 
+Full multi-agent script: [demos/WORKFORCE-DEMO.md](./demos/WORKFORCE-DEMO.md).
+
 ---
 
 ## After the five minutes

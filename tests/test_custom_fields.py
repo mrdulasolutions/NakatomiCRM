@@ -109,3 +109,25 @@ def test_member_role_cannot_create(client, workspace):
         json={"entity_type": "contact", "name": "x", "label": "x", "field_type": "string"},
     )
     assert r.status_code == 403
+
+
+def test_patch_contact_validates_custom_field_data(client, workspace):
+    h = workspace["headers"]
+    client.post(
+        "/custom-fields",
+        headers=h,
+        json={
+            "entity_type": "contact",
+            "name": "tier",
+            "label": "Tier",
+            "field_type": "select",
+            "options": ["A", "B"],
+            "required": True,
+        },
+    )
+    r = client.post("/contacts", headers=h, json={"first_name": "X", "last_name": "Y", "data": {"tier": "A"}})
+    assert r.status_code == 201, r.text
+    cid = r.json()["id"]
+    r = client.patch(f"/contacts/{cid}", headers=h, json={"data": {"tier": "C"}})
+    assert r.status_code == 422
+    assert "tier" in r.json()["detail"].lower()

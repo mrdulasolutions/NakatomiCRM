@@ -18,6 +18,7 @@ from app.schemas import (
     Page,
 )
 from app.services.company_merge import merge_companies
+from app.services.custom_field_validate import validate_entity_data
 from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
@@ -115,6 +116,13 @@ def patch_company(
     if not c or c.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
     updates = payload.model_dump(exclude_unset=True)
+    if "data" in updates and updates["data"] is not None:
+        try:
+            validate_entity_data(
+                db, p.workspace.id, EntityType.company, updates["data"], merge_existing=c.data or {}
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     for k, v in updates.items():
         setattr(c, k, v)
     changes = compute_changes(c, list(updates.keys()))

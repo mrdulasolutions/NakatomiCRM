@@ -658,6 +658,8 @@ class SchemaOut(BaseModel):
     sunset_notice_days: int | None = None
     scheduled_sunsets: list | None = None
     protocol_policy: str | None = None
+    mcp_tools: dict | None = None
+    mcp_resources: list | None = None
 
 
 class AnyEntityOut(BaseModel):
@@ -813,6 +815,8 @@ class IngestOut(BaseModel):
     created_ids: list[str]
     updated_ids: list[str]
     diagnostics: list[IngestDiagnostic]
+    job_id: str | None = None
+    promoted_async: bool = False
 
 
 # ---------- Approvals (HITL) ----------

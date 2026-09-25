@@ -27,6 +27,7 @@ from app.schemas import (
     ContactPatch,
     Page,
 )
+from app.services.custom_field_validate import validate_entity_data
 from app.services.diffs import compute_changes
 from app.services.duplicates import find_duplicates
 from app.services.duplicates import serialize as serialize_duplicates
@@ -178,6 +179,13 @@ def patch_contact(
     if not c or c.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
     updates = payload.model_dump(exclude_unset=True)
+    if "data" in updates and updates["data"] is not None:
+        try:
+            validate_entity_data(
+                db, p.workspace.id, EntityType.contact, updates["data"], merge_existing=c.data or {}
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     for k, v in updates.items():
         setattr(c, k, v)
     changes = compute_changes(c, list(updates.keys()))

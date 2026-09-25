@@ -18,6 +18,7 @@ from app.schemas import (
     OkResponse,
     Page,
 )
+from app.services.custom_field_validate import validate_entity_data
 from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
@@ -156,6 +157,13 @@ def patch_deal(
     updates = payload.model_dump(exclude_unset=True)
     old_stage = d.stage_id
     old_status = d.status
+    if "data" in updates and updates["data"] is not None:
+        try:
+            validate_entity_data(
+                db, p.workspace.id, EntityType.deal, updates["data"], merge_existing=d.data or {}
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     # Workspace policy (required fields / block rules)
     from app.services.policies import evaluate_write
 

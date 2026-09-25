@@ -5,17 +5,19 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.10] — 2026-09-25 — Roadmap stretch (P1/P2/P3/P5–P6)
+
 ### Added
 
-- **P5 Agent OS:** `entity_context`, `agent_activity`, `explain_change`, handoff REST/MCP; timeline `actor_label`; `GET /agent/*` routes; workforce docs ([AGENT-OS.md](./docs/AGENT-OS.md)).
+- **MCP:** Resource templates `crm://contact|deal|company/{id}`; versioned **`mcp_tools`** / **`mcp_resources`** on `GET /schema`.
+- **P2.6:** Custom field runtime validation on entity PATCH (422 + suggestions).
+- **P2.7:** Forecast `by_commit`, `by_currency`, `compare_prior` trend.
+- **P3.2:** Auto-promote ingest payloads **>200** records to async jobs.
+- **Docs:** [WORKFORCE-DEMO.md](./docs/demos/WORKFORCE-DEMO.md), [AGENTLAB-RECOVERY.md](./docs/AGENTLAB-RECOVERY.md), [CLOUDFLARE_PARITY.md](./docs/CLOUDFLARE_PARITY.md).
 
 ### Changed
 
-- **Dependencies:** security bumps (FastAPI 0.140.x, pydantic, sqlalchemy, mcp, python-jose, python-multipart, etc.); GitHub Actions v7; `pip-audit` ignores unfixed transitive `ecdsa` (python-jose).
-
-### Fixed
-
-- **CI:** `pip-audit` failures on main; ruff import order in `app/main.py`.
+- **ROADMAP:** P5.7 / P6.4 demo scripts marked shipped.
 
 ## [1.0.9] — 2026-09-25 — Dashboard login visibility
 

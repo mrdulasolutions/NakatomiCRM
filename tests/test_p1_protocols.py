@@ -134,3 +134,13 @@ def test_a2a_cancel(client, workspace):
     r = client.post(f"/a2a/tasks/{tid}/cancel", headers=h)
     assert r.status_code == 200
     assert r.json()["status"] == "canceled"
+
+
+def test_schema_includes_mcp_manifest(client, workspace):
+    r = client.get("/schema")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mcp_tools"]["schema_version"] == "1.1"
+    assert "entity_context" in body["mcp_tools"]["tools"]
+    uris = [t["uri_template"] for t in body["mcp_resources"]]
+    assert "crm://contact/{contact_id}" in uris

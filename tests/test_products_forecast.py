@@ -200,3 +200,28 @@ def test_forecast_period_parsing(client, workspace):
     assert r.status_code == 200
     assert r.json()["from"] == "2026-01-01"
     assert r.json()["to"] == "2026-03-31"
+
+
+def test_forecast_by_commit_and_currency(client, workspace):
+    h = workspace["headers"]
+    pipe = _make_pipeline(client, h)
+    qualified = next(s for s in pipe["stages"] if s["slug"] == "qualified")
+    client.post(
+        "/deals",
+        headers=h,
+        json={
+            "name": "Commit deal",
+            "amount": 500,
+            "currency": "EUR",
+            "stage_id": qualified["id"],
+            "expected_close_date": "2026-05-10T00:00:00Z",
+            "data": {"commit_category": "commit"},
+        },
+    )
+    r = client.get("/forecast", headers=h, params={"period": "2026Q2"})
+    assert r.status_code == 200, r.text
+    commits = {c["commit_category"]: c for c in r.json()["by_commit"]}
+    assert "commit" in commits
+    currencies = {c["currency"]: c for c in r.json()["by_currency"]}
+    assert "EUR" in currencies
+    assert "fx_note" in r.json()

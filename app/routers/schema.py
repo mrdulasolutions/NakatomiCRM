@@ -299,6 +299,7 @@ router_schema = router  # alias so main.py can import clearly
 @router.get("/schema", response_model=SchemaOut)
 def describe() -> SchemaOut:
     from app import __version__
+    from app.mcp_tools_manifest import MCP_RESOURCE_TEMPLATES, MCP_TOOLS_MANIFEST
     from app.protocol import protocol_manifest
 
     m = protocol_manifest()
@@ -311,4 +312,6 @@ def describe() -> SchemaOut:
         sunset_notice_days=m["sunset_notice_days"],
         scheduled_sunsets=m["scheduled_sunsets"],
         protocol_policy=m["policy"],
+        mcp_tools=MCP_TOOLS_MANIFEST,
+        mcp_resources=MCP_RESOURCE_TEMPLATES,
     )

@@ -13,6 +13,7 @@ If you run into SDK version drift, the two moving pieces are:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -249,6 +250,20 @@ def get_contact(ctx: Context, contact_id: str) -> dict:
         db.close()
 
 
+@mcp.resource("crm://contact/{contact_id}")
+def mcp_resource_contact(ctx: Context, contact_id: str) -> str:
+    """Read-only contact JSON (REST parity: GET /contacts/{id})."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "contacts:read")
+        c = db.get(Contact, contact_id)
+        if not c or c.workspace_id != p.workspace.id or c.deleted_at is not None:
+            raise RuntimeError("not found")
+        return json.dumps(_serialize(c), default=str)
+    finally:
+        db.close()
+
+
 @mcp.tool()
 def create_contact(
     ctx: Context,
@@ -427,6 +442,20 @@ def create_company(
         out = _serialize(c)
         _save(201, out)
         return out
+    finally:
+        db.close()
+
+
+@mcp.resource("crm://company/{company_id}")
+def mcp_resource_company(ctx: Context, company_id: str) -> str:
+    """Read-only company JSON (REST parity: GET /companies/{id})."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "companies:read")
+        c = db.get(Company, company_id)
+        if not c or c.workspace_id != p.workspace.id or c.deleted_at is not None:
+            raise RuntimeError("not found")
+        return json.dumps(_serialize(c), default=str)
     finally:
         db.close()
 
@@ -615,6 +644,20 @@ def create_deal(
         out = _serialize(d)
         _save(201, out)
         return out
+    finally:
+        db.close()
+
+
+@mcp.resource("crm://deal/{deal_id}")
+def mcp_resource_deal(ctx: Context, deal_id: str) -> str:
+    """Read-only deal JSON (REST parity: GET /deals/{id})."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "deals:read")
+        d = db.get(Deal, deal_id)
+        if not d or d.workspace_id != p.workspace.id or d.deleted_at is not None:
+            raise RuntimeError("not found")
+        return json.dumps(_serialize(d), default=str)
     finally:
         db.close()
 
