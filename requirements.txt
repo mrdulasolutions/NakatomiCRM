@@ -2,7 +2,7 @@
 # Bump deliberately; CI installs a clean venv from this file.
 
 # API framework + ASGI server
-fastapi==0.115.5
+fastapi==0.141.1
 uvicorn[standard]==0.32.1
 
 # DB + migrations (Postgres-only; JSONB / pg_trgm required)
