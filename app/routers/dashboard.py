@@ -357,25 +357,40 @@ async function loadWebhooks() {
 }
 
 let _memCursor = null;
-let _memFirstLoad = true;
+let _memEnabledConnectors = null;
+
+function updateConnectorBanner(enabled, linkItems) {
+  const el = document.getElementById("mem-connectors");
+  const linked = [...new Set((linkItems || []).map(l => l.connector))].sort();
+  if (enabled.length) {
+    el.textContent = linked.length && linked.some(c => !enabled.includes(c))
+      ? `${enabled.join(", ")} · links also: ${linked.filter(c => !enabled.includes(c)).join(", ")}`
+      : enabled.join(", ");
+  } else if (linked.length) {
+    el.textContent = `MEMORY_CONNECTORS off · ${linked.length} linked: ${linked.join(", ")}`;
+  } else {
+    el.textContent = "none enabled";
+  }
+  const sel = document.getElementById("mem-connector-filter");
+  const seen = new Set([...sel.options].map(o => o.value).filter(Boolean));
+  for (const c of [...new Set([...enabled, ...linked])]) {
+    if (seen.has(c)) continue;
+    const opt = document.createElement("option"); opt.value = c; opt.textContent = c; sel.appendChild(opt);
+    seen.add(c);
+  }
+}
 
 async function loadMemory(reset = true) {
   if (reset) _memCursor = null;
   const connector = document.getElementById("mem-connector-filter").value;
   const entityType = document.getElementById("mem-entity-filter").value;
 
-  // Populate connectors list + filter options on first open.
-  if (_memFirstLoad) {
+  if (_memEnabledConnectors === null) {
     try {
-      const conns = await api("/memory/connectors");
-      const el = document.getElementById("mem-connectors");
-      el.textContent = conns.length ? conns.join(", ") : "none enabled";
-      const sel = document.getElementById("mem-connector-filter");
-      for (const c of conns) {
-        const opt = document.createElement("option"); opt.value = c; opt.textContent = c; sel.appendChild(opt);
-      }
-    } catch (e) { /* non-fatal */ }
-    _memFirstLoad = false;
+      _memEnabledConnectors = await api("/memory/connectors");
+    } catch (e) {
+      _memEnabledConnectors = [];
+    }
   }
 
   const qs = new URLSearchParams({ limit: "50" });
@@ -384,6 +399,9 @@ async function loadMemory(reset = true) {
   if (_memCursor) qs.set("cursor", _memCursor);
 
   const page = await api(`/memory/links?${qs}`);
+  if (reset) {
+    updateConnectorBanner(_memEnabledConnectors, page.items);
+  }
   const root = document.getElementById("mem-root");
   const totalEl = document.getElementById("mem-total");
   if (reset) root.innerHTML = "";

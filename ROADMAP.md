@@ -374,9 +374,22 @@ We will **not** build:
 
 - [ ] Swarm manager / compliance auditor / benchmarks — **deferred** (not product core)
 
-### P3.6 — Memory depth
+### P3.6 — External memory connectors (not an in-CRM vector engine)
 
-- [ ] Per-workspace connectors, conflict policy, pgvector — **deferred**
+**Non-goal:** Nakatomi-native pgvector / “second brain” that competes with Supermemory, DocDeploy, GBrain.
+
+**Validated pattern (Acme / handoff demos):** Nakatomi = **structured business state**; external store = **semantic recall**; `MemoryLink` = durable bridge; timeline/audit = provenance. Semantic content may **project** handoff or entity state — structured CRM fields still win on conflict.
+
+**Future connector contract (when prioritized):**
+
+- [ ] Provenance on links (source event, actor, projection vs manual link)
+- [ ] Entity ↔ memory lifecycle (unlink, stale detection)
+- [ ] Connector health / `MEMORY_CONNECTORS` vs orphan links (dashboard clarity)
+- [ ] Workspace isolation guarantees
+- [ ] Reprojection / sync semantics documented (“structured state wins”)
+- [ ] Conflict policy when recall disagrees with CRM PATCH
+
+**Deferred:** per-workspace connector UI, inbound webhook volume, pgvector inside Postgres.
 
 ### P3 status: **CORE DONE** (v0.7.0) — AgentLab recipes + memory depth later
 
@@ -567,6 +580,7 @@ SemVer: breaking MCP/A2A/ACP contract changes require major bump + sunset window
 
 | Date | Change |
 | --- | --- |
+| 2026-09-25 | **P3.6 external memory** — no in-CRM vector engine; connector contract emphasis. Dashboard clarifies `MEMORY_CONNECTORS` vs existing `MemoryLink` rows. |
 | 2026-09-25 | **P5.8 decision boundaries** — roadmap + [AGENT-OS.md](./docs/AGENT-OS.md) (approvals vs business-state uncertainty; Brightfield motivation). Removed third-party vertical name from P4.3 / protocol diagram. |
 | 2026-09-25 | **P5 Agent OS + P6 workforce interoperability** — [docs/AGENT-OS.md](./docs/AGENT-OS.md), [docs/integrations/PAPERCLIP.md](./docs/integrations/PAPERCLIP.md); fixed A2A/ACP status in protocol table. |
 | 2026-08-07 | **v1.0 shipped** — protocol SLA, optional OTel + SSO, operator CLI, docs freeze. |
