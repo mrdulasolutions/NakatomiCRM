@@ -22,14 +22,14 @@ fallback is still in git history if we ever need to go back to it.
 | Marketplace metadata | Sync env vars + republish when [`.env.example`](../.env.example) changes (see checklist below) |
 | Code on new installs | Pulled from **GitHub `main`** at deploy time — keep `main` green |
 
-**Refresh checklist after a release (e.g. v1.0.5):**
+**Refresh checklist after a release (e.g. v1.0.6):**
 
-1. Push `main` (and tag `v1.0.5` if you cut a release).
+1. Push `main` (and tag `v1.0.6` if you cut a release).
 2. Wait for GitHub Actions green on `main`.
 3. Redeploy demo service: `railway up --service nakatomi` (or Railway **Redeploy**).
 4. In Railway **template settings**, add/sync any new optional vars from the table below (`BOOTSTRAP_TOKEN`, rate limits, etc.) — defaults can stay `0`/empty.
 5. **Sync from Project** or `railway templates publish nakatomicrm --readme-file docs/RAILWAY_TEMPLATE_README.md --demo-project <project-id> …`
-6. Smoke: `GET /health` (version `1.0.5`), branded welcome at `/`, `GET /oauth/login`, `POST /mcp` with Bearer key.
+6. Smoke: `GET /health` (version `1.0.6`), branded welcome at `/`, `GET /oauth/login`, `POST /mcp` with Bearer key.
 7. `python -m app check-config` in the Railway shell with production env (optional).
 
 ---
@@ -133,7 +133,7 @@ With the published template:
    vars pre-filled; `SECRET_KEY` generated. User only picks a project
    name + region.
 3. Deploy. 60–90s later, `https://<name>.up.railway.app/health`
-   returns `{"ok":true,"version":"1.0.5",…}` and `/mcp/` speaks streamable HTTP.
+   returns `{"ok":true,"version":"1.0.6",…}` and `/mcp/` speaks streamable HTTP.
 4. Open the public URL: **branded welcome** at `/` creates the first workspace,
    owner account, and API key in one form (key shown once). OAuth authorize
    uses the same Nakatomi Plaza UI at `/oauth/authorize`.

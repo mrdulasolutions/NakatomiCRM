@@ -59,6 +59,7 @@ _DASHBOARD_HTML = (
     <p class="lede">Read-only view of timeline, pipelines, webhooks, and memory links. Paste a workspace key with list scopes.</p>
     <label for="key">API key</label>
     <input id="key" type="password" placeholder="nk_..." autocomplete="off" />
+    <div id="auth-error" class="alert err" hidden role="alert"></div>
     <button type="button" id="save">Use key</button>
     <p class="foot">Stored in a cookie on this path only. Sign out clears it.</p>
   </div>
@@ -122,19 +123,52 @@ _DASHBOARD_HTML = (
 
 <script>
 const COOKIE = "nk_dashboard_key";
+const STORAGE_KEY = "nk_dashboard_key";
+
 function getKey() {
+  try {
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) return stored;
+  } catch (e) { /* private mode */ }
   const m = document.cookie.match(/(?:^|; )nk_dashboard_key=([^;]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
 function setKey(k) {
-  document.cookie = `${COOKIE}=${encodeURIComponent(k)};path=/dashboard;SameSite=Strict;max-age=2592000`;
+  try { sessionStorage.setItem(STORAGE_KEY, k); } catch (e) { /* ignore */ }
+  const secure = location.protocol === "https:" ? ";Secure" : "";
+  document.cookie = `${COOKIE}=${encodeURIComponent(k)};path=/;SameSite=Lax;max-age=2592000${secure}`;
 }
-function clearKey() { document.cookie = `${COOKIE}=;path=/dashboard;max-age=0`; location.reload(); }
+function clearKey() {
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+  document.cookie = `${COOKIE}=;path=/;max-age=0`;
+  location.reload();
+}
+
+function showAuthError(msg) {
+  const wrap = document.getElementById("auth-wrap");
+  const err = document.getElementById("auth-error");
+  wrap.hidden = false;
+  document.getElementById("app").hidden = true;
+  err.hidden = false;
+  err.textContent = msg;
+}
 
 async function api(path) {
-  const key = getKey(); if (!key) throw new Error("no key");
+  const key = getKey();
+  if (!key) throw new Error("No API key saved");
   const r = await fetch(path, { headers: { Authorization: `Bearer ${key}` } });
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  if (!r.ok) {
+    let detail = `${path} → HTTP ${r.status}`;
+    try {
+      const body = await r.json();
+      if (body && body.detail) {
+        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      }
+    } catch (e) { /* non-JSON */ }
+    const err = new Error(detail);
+    err.status = r.status;
+    throw err;
+  }
   return r.json();
 }
 function row(key, text, time) {
@@ -374,15 +408,15 @@ async function loadMemory(reset = true) {
 function switchView(name) {
   for (const b of document.querySelectorAll(".dash-nav button")) b.classList.toggle("active", b.dataset.view === name);
   for (const v of document.querySelectorAll(".dash-view")) v.classList.toggle("active", v.id === "view-" + name);
-  if (name === "kanban") loadKanban().catch(err => { console.error(err); clearKey(); });
-  if (name === "webhooks") loadWebhooks().catch(err => { console.error(err); clearKey(); });
-  if (name === "memory") loadMemory().catch(err => { console.error(err); clearKey(); });
+  if (name === "kanban") loadKanban().catch(err => { console.error(err); showAuthError(err.message); });
+  if (name === "webhooks") loadWebhooks().catch(err => { console.error(err); showAuthError(err.message); });
+  if (name === "memory") loadMemory().catch(err => { console.error(err); showAuthError(err.message); });
 }
 
-async function init() {
-  if (!getKey()) { document.getElementById("auth-wrap").hidden = false; return; }
-  document.getElementById("app").hidden = false;
-  try { await loadAudit(); } catch (e) { console.error(e); clearKey(); return; }
+let _uiWired = false;
+function wireUi() {
+  if (_uiWired) return;
+  _uiWired = true;
   for (const b of document.querySelectorAll(".dash-nav button")) b.addEventListener("click", () => switchView(b.dataset.view));
   document.getElementById("wh-refresh").addEventListener("click", () => loadWebhooks());
   document.getElementById("wh-filter").addEventListener("change", () => loadWebhooks());
@@ -391,10 +425,36 @@ async function init() {
   document.getElementById("mem-entity-filter").addEventListener("change", () => loadMemory());
 }
 
-document.getElementById("save").onclick = () => {
+async function init() {
+  if (!getKey()) { document.getElementById("auth-wrap").hidden = false; return; }
+  document.getElementById("auth-wrap").hidden = true;
+  document.getElementById("auth-error").hidden = true;
+  document.getElementById("app").hidden = false;
+  try {
+    await loadAudit();
+  } catch (e) {
+    console.error(e);
+    const status = e.status || 0;
+    if (status === 401) {
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch (x) { /* ignore */ }
+      document.cookie = `${COOKIE}=;path=/;max-age=0`;
+    }
+    showAuthError(
+      status === 403
+        ? `${e.message} — use a key with * or read scopes for timeline, contacts, deals, tasks, webhooks.`
+        : e.message || "Could not load dashboard data."
+    );
+    return;
+  }
+  wireUi();
+}
+
+document.getElementById("save").onclick = async () => {
   const k = document.getElementById("key").value.trim();
-  if (!k.startsWith("nk_")) { alert("expected an nk_... key"); return; }
-  setKey(k); location.reload();
+  if (!k.startsWith("nk_")) { alert("Expected an nk_… API key"); return; }
+  document.getElementById("auth-error").hidden = true;
+  setKey(k);
+  await init();
 };
 document.getElementById("logout").onclick = clearKey;
 

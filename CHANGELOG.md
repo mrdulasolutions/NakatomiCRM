@@ -5,6 +5,13 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-09-25 — Dashboard API key persistence
+
+### Fixed
+
+- **`/dashboard`** no longer clears the saved API key on every failed API call; shows an inline error instead (clears only on HTTP 401).
+- API key stored with **`path=/`**, `sessionStorage` fallback, and inline connect (no reload loop).
+
 ## [1.0.5] — 2026-09-25 — Branded audit dashboard
 
 ### Changed
@@ -17,6 +24,7 @@ Versioning: [SemVer](https://semver.org/).
 
 - `nakatomi-dashboard` skill notes dev default and Plaza UI.
 
+## [1.0.4] — 2026-09-25 — Email secrets at rest
 
 ### Added
 
