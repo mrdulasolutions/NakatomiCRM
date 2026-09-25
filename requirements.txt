@@ -3,7 +3,7 @@
 
 # API framework + ASGI server
 fastapi==0.115.5
-uvicorn[standard]==0.32.1
+uvicorn[standard]==0.53.0
 
 # DB + migrations (Postgres-only; JSONB / pg_trgm required)
 sqlalchemy==2.0.36
