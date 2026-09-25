@@ -145,7 +145,9 @@ function setKey(k) {
 
 function signOut() {
   try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-  document.cookie = `${COOKIE}=;${cookieTail()};max-age=0`;
+  const tail = cookieTail();
+  document.cookie = `${COOKIE}=;${tail};max-age=0`;
+  document.cookie = `${COOKIE}=;${tail};max-age=0;expires=Thu, 01 Jan 1970 00:00:00 GMT`;
   document.getElementById("key").value = "";
   document.getElementById("auth-error").hidden = true;
   document.getElementById("ws").textContent = "";
@@ -161,7 +163,7 @@ function showAuthError(msg) {
 
 function setDashboardAuth(showLogin) {
   document.querySelector(".dash-shell").classList.toggle("dash-authed", !showLogin);
-  document.getElementById("auth-wrap").hidden = showLogin;
+  document.getElementById("auth-wrap").hidden = !showLogin;
   document.getElementById("app").hidden = showLogin;
 }
 

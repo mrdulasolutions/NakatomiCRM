@@ -5,6 +5,12 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.9] — 2026-09-25 — Dashboard login visibility
+
+### Fixed
+
+- **`/dashboard`** login panel used inverted `hidden` logic, so sign-out hid the API key form and refresh could re-auth from a surviving cookie while the UI looked logged out.
+
 ## [1.0.8] — 2026-09-25 — Dashboard sign out
 
 ### Fixed

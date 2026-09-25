@@ -1,6 +1,6 @@
 [project]
 name = "nakatomi"
-version = "1.0.8"
+version = "1.0.9"
 description = "A headless, agent-native CRM for Claude, ChatGPT, Perplexity, and Cursor."
 readme = "README.md"
 license = { file = "LICENSE" }
