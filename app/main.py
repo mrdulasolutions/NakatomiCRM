@@ -206,9 +206,15 @@ _TAGS_METADATA = [
     {"name": "quotes", "description": "Versioned deal quotes with line-item snapshots."},
     {"name": "views", "description": "Saved filter views/segments agents can run by slug."},
     {"name": "jobs", "description": "Async bulk jobs (ingest, export, custom) with pollable status."},
-    {"name": "policies", "description": "Declarative workspace policies (required fields, blocks, auto-tasks)."},
+    {
+        "name": "policies",
+        "description": "Declarative workspace policies (required fields, blocks, auto-tasks).",
+    },
     {"name": "forensics", "description": "Audit search and entity time-travel as-of reconstruction."},
-    {"name": "import", "description": "One-shot CRM importers (HubSpot, Salesforce, Pipedrive, Attio, generic)."},
+    {
+        "name": "import",
+        "description": "One-shot CRM importers (HubSpot, Salesforce, Pipedrive, Attio, generic).",
+    },
     {"name": "custom-objects", "description": "Workspace-defined object types and records (moldable model)."},
     {
         "name": "sso",
@@ -250,9 +256,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.middleware_auth_limit import AuthRateLimitMiddleware  # noqa: E402
 from app.middleware_idempotency import IdempotencyMiddleware  # noqa: E402
 
 app.add_middleware(IdempotencyMiddleware)
+app.add_middleware(AuthRateLimitMiddleware)
 
 
 @app.middleware("http")
@@ -414,6 +422,7 @@ def well_known_agent_card(request: Request):
 
 
 if _PUBLIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_PUBLIC_DIR)), name="static")
     # Static mount still serves other well-known assets if any; agent cards
     # are handled by the dynamic routes above (registered first).
     app.mount("/.well-known", StaticFiles(directory=str(_PUBLIC_DIR / ".well-known")), name="well-known")

@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.deps import Principal
 from app.models import (
-    Activity,
     Company,
     Contact,
     Deal,

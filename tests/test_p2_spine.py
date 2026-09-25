@@ -96,7 +96,9 @@ def test_company_parent_and_merge(client, workspace):
     assert child["parent_company_id"] == parent["id"]
 
     loser = client.post("/companies", headers=h, json={"name": "Dup Parent", "domain": "parent2.test"}).json()
-    client.post("/contacts", headers=h, json={"first_name": "X", "email": "x@y.com", "company_id": loser["id"]})
+    client.post(
+        "/contacts", headers=h, json={"first_name": "X", "email": "x@y.com", "company_id": loser["id"]}
+    )
     r = client.post(
         "/companies/merge",
         headers=h,
@@ -150,7 +152,11 @@ def test_quotes_versioned(client, workspace):
     r = client.post(
         "/quotes",
         headers=h,
-        json={"deal_id": d["id"], "name": "Q2", "lines": [{"name": "Seats", "unit_price": 90, "quantity": 5}]},
+        json={
+            "deal_id": d["id"],
+            "name": "Q2",
+            "lines": [{"name": "Seats", "unit_price": 90, "quantity": 5}],
+        },
     )
     assert r.json()["version"] == 2
 

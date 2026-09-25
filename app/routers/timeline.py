@@ -7,11 +7,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal, enforce_resource_scope
+from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
 from app.models import EntityType, TimelineEvent
 from app.schemas import Page, TimelineEventOut
 
-router = APIRouter(prefix="/timeline", tags=["timeline"],
+router = APIRouter(
+    prefix="/timeline",
+    tags=["timeline"],
     dependencies=[Depends(enforce_resource_scope("timeline"))],
 )
 

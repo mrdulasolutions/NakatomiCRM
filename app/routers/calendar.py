@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role, enforce_resource_scope
+from app.deps import Principal, enforce_resource_scope, get_principal, require_role
 from app.models import CalendarFeed, MemberRole
 from app.schemas import (
     CalendarFeedIn,
@@ -24,16 +24,16 @@ from app.schemas import (
 )
 from app.services.calendar_io import sync_feed
 
-router = APIRouter(prefix="/calendar", tags=["calendar"],
+router = APIRouter(
+    prefix="/calendar",
+    tags=["calendar"],
     dependencies=[Depends(enforce_resource_scope("calendar"))],
 )
 
 
 @router.get("/feeds", response_model=list[CalendarFeedOut])
 def list_feeds(db: Session = Depends(get_db), p: Principal = Depends(get_principal)) -> list[CalendarFeedOut]:
-    rows = db.scalars(
-        select(CalendarFeed).where(CalendarFeed.workspace_id == p.workspace.id)
-    ).all()
+    rows = db.scalars(select(CalendarFeed).where(CalendarFeed.workspace_id == p.workspace.id)).all()
     return [CalendarFeedOut.model_validate(r) for r in rows]
 
 
@@ -51,7 +51,9 @@ def create_feed(
 
 
 @router.get("/feeds/{feed_id}", response_model=CalendarFeedOut)
-def get_feed(feed_id: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)) -> CalendarFeedOut:
+def get_feed(
+    feed_id: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)
+) -> CalendarFeedOut:
     feed = db.get(CalendarFeed, feed_id)
     if not feed or feed.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")

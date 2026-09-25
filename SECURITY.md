@@ -43,8 +43,8 @@ In scope:
 - Memory connector adapter bugs that leak data across tenants
 
 Out of scope (please don't report):
-- Rate-limit gaps on endpoints we have not yet rate-limited (known gap — see
-  roadmap)
+- Rate-limit gaps when `AUTH_RATE_LIMIT_PER_MINUTE` and `API_KEY_RATE_LIMIT_PER_MINUTE`
+  are left at `0` (operator-configurable; use `python -m app check-config` in production)
 - Attacks requiring a malicious *authenticated* admin of the same workspace
 - DoS by high-volume request floods
 
@@ -59,6 +59,8 @@ pull/pin the upstream fix.
 - Never commit an `.env` file. The repo ships `.env.example` only.
 - API keys are stored as SHA-256 hashes. The plaintext is shown exactly once at
   creation time.
+- Workspace email IMAP/SMTP passwords are encrypted at rest (Fernet, keyed from
+  `SECRET_KEY`). Re-save email config after rotating `SECRET_KEY`.
 - Webhook secrets are generated server-side and returned once at creation time.
 - Workspace members can rotate keys at any time by revoking the old one and
   minting a new one.

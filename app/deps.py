@@ -254,10 +254,7 @@ def enforce_resource_scope(resource: str):
         if miss:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    f"missing scopes: {miss}; "
-                    f"suggestion: mint a key with {needed} or '*'"
-                ),
+                detail=(f"missing scopes: {miss}; " f"suggestion: mint a key with {needed} or '*'"),
             )
         return p
 
@@ -409,9 +406,7 @@ async def get_idempotency_guard(
     )
     if not idempotency_key:
         return guard
-    existing = check_idempotency(
-        db, p.workspace.id, idempotency_key, request.method, request.url.path, body
-    )
+    existing = check_idempotency(db, p.workspace.id, idempotency_key, request.method, request.url.path, body)
     if existing:
         guard.replay = JSONResponse(
             status_code=existing.status_code,
@@ -438,9 +433,7 @@ def mcp_idempotency(
 
     path = f"mcp:{tool}"
     body_bytes = json_bytes(args)
-    existing = check_idempotency(
-        db, principal.workspace.id, idempotency_key, "MCP", path, body_bytes
-    )
+    existing = check_idempotency(db, principal.workspace.id, idempotency_key, "MCP", path, body_bytes)
     if existing:
         return existing.response_body, (lambda *_a, **_k: None)
 

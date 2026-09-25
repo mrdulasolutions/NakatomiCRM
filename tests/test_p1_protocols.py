@@ -43,7 +43,10 @@ def test_acp_context_pack(client, workspace):
     assert "pipelines" in pack
     assert "policies" in pack
     assert "scopes_on_this_key" in pack["policies"]
-    assert "*" in pack["policies"]["scopes_on_this_key"] or "contacts:read" in pack["policies"]["scopes_on_this_key"]
+    assert (
+        "*" in pack["policies"]["scopes_on_this_key"]
+        or "contacts:read" in pack["policies"]["scopes_on_this_key"]
+    )
     assert "hints" in pack and pack["hints"]
     assert "etag" in pack
     etag = pack["etag"]

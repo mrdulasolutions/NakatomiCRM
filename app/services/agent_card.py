@@ -94,8 +94,7 @@ def build_agent_card(*, base_url: str, extended: bool = False) -> dict[str, Any]
                 "scheme": "bearer",
                 "bearerFormat": "API key nk_<prefix>_<secret> or JWT",
                 "description": (
-                    "Workspace API key (Authorization: Bearer nk_…) or user JWT "
-                    "with X-Workspace header."
+                    "Workspace API key (Authorization: Bearer nk_…) or user JWT " "with X-Workspace header."
                 ),
             }
         },

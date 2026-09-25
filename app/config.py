@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # per-key overrides on ApiKey.rate_limit_per_minute still apply.
     API_KEY_RATE_LIMIT_PER_MINUTE: int = 0
 
+    # Unauthenticated auth/bootstrap POST rate limit (fixed 60s window). 0 disables.
+    AUTH_RATE_LIMIT_PER_MINUTE: int = 0
+
+    # When set, first-run /bootstrap and /welcome/signup require ?token= matching this value.
+    BOOTSTRAP_TOKEN: str = ""
+
     CORS_ORIGINS: str = "*"
 
     # Memory connectors — comma-separated list; each adapter reads its own env vars

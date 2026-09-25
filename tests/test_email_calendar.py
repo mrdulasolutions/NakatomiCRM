@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from app.services.calendar_io import parse_ics
 
 # ---------------------------------------------------------------------------
@@ -167,6 +165,49 @@ def test_email_config_crud(client, workspace):
         },
     )
     assert r.json()["imap_host"] == "imap2.example.com"
+
+
+def test_email_passwords_encrypted_at_rest(client, workspace):
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import EmailConfig
+
+    h = workspace["headers"]
+    client.put(
+        "/email/config",
+        headers=h,
+        json={
+            "smtp_host": "smtp.example.com",
+            "smtp_user": "me@example.com",
+            "smtp_password": "secret",
+        },
+    )
+    db = SessionLocal()
+    try:
+        cfg = db.scalar(select(EmailConfig).where(EmailConfig.workspace_id == workspace["workspace_id"]))
+        assert cfg is not None
+        assert cfg.smtp_password is not None
+        assert cfg.smtp_password.startswith("enc:v1:")
+    finally:
+        db.close()
+
+
+def test_legacy_plaintext_smtp_password_still_works(monkeypatch):
+    from app.models import EmailConfig
+    from app.services.email_io import send_email
+
+    cfg = EmailConfig(
+        workspace_id="ws",
+        smtp_host="smtp.example.com",
+        smtp_user="me@example.com",
+        smtp_password="legacy-plain",
+        smtp_port=587,
+    )
+    with patch("app.services.email_io.smtplib.SMTP") as smtp_cls:
+        inst = smtp_cls.return_value.__enter__.return_value
+        send_email(cfg, to=["a@example.com"], cc=[], bcc=[], subject="Hi", body="yo")
+        inst.login.assert_called_once_with("me@example.com", "legacy-plain")
 
 
 def test_email_send_requires_smtp_config(client, workspace):

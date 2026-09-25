@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, enforce_resource_scope, get_principal, require_scopes
+from app.deps import Principal, enforce_resource_scope, get_principal
 from app.models import SavedView
 from app.schemas import SavedViewIn, SavedViewOut
 from app.services.views import DEFAULT_VIEWS, run_view
@@ -38,8 +38,7 @@ def _out(row: SavedView) -> SavedViewOut:
 
 def ensure_default_views(db: Session, workspace_id: str) -> None:
     existing = {
-        r.slug
-        for r in db.scalars(select(SavedView).where(SavedView.workspace_id == workspace_id)).all()
+        r.slug for r in db.scalars(select(SavedView).where(SavedView.workspace_id == workspace_id)).all()
     }
     for v in DEFAULT_VIEWS:
         if v["slug"] in existing:
@@ -151,7 +150,9 @@ def run(
 def delete_view(view_ref: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)):
     row = _resolve(db, p.workspace.id, view_ref)
     if row.is_default:
-        raise HTTPException(status_code=400, detail="cannot delete seeded default views; recreate after soft-delete")
+        raise HTTPException(
+            status_code=400, detail="cannot delete seeded default views; recreate after soft-delete"
+        )
     row.deleted_at = datetime.now(UTC)
     db.commit()
     return {"ok": True}

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_scopes
+from app.deps import Principal, require_scopes
 from app.services.forensics import entity_as_of, search_audit
 
 router = APIRouter(tags=["forensics"])

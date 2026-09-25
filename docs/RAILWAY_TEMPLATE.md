@@ -11,7 +11,7 @@ The button was previously wired to the generic
 required users to add Postgres and paste a `SECRET_KEY` by hand. That
 fallback is still in git history if we ever need to go back to it.
 
-## Live status (2026-08-07)
+## Live status (2026-09-25)
 
 | Piece | Status |
 | --- | --- |
@@ -19,15 +19,18 @@ fallback is still in git history if we ever need to go back to it.
 | Demo / source project | https://railway.com/project/f5806f53-6506-4dfc-8b9e-6dd826ee46d9 (`NakatomiCRM`) |
 | Public demo domain | https://nakatomi-production.up.railway.app |
 | App git | `mrdulasolutions/NakatomiCRM@main` (Dockerfile + `railway.toml`) |
-| Marketplace metadata | Updated via `railway templates publish nakatomicrm` (description, readme, demo project) |
+| Marketplace metadata | Sync env vars + republish when [`.env.example`](../.env.example) changes (see checklist below) |
 | Code on new installs | Pulled from **GitHub `main`** at deploy time — keep `main` green |
 
-**Refresh checklist (no SemVer bump required for ops fixes):**
+**Refresh checklist after a release (e.g. v1.0.4):**
 
-1. Push `main`.
-2. Redeploy demo service: `railway up --service nakatomi` (or Railway redeploy).
-3. `railway templates publish nakatomicrm --readme-file docs/RAILWAY_TEMPLATE_README.md --demo-project <project-id> …`
-4. Smoke: `GET /health`, `POST /mcp` initialize (not the site root).
+1. Push `main` (and tag `v1.0.4` if you cut a release).
+2. Wait for GitHub Actions green on `main`.
+3. Redeploy demo service: `railway up --service nakatomi` (or Railway **Redeploy**).
+4. In Railway **template settings**, add/sync any new optional vars from the table below (`BOOTSTRAP_TOKEN`, rate limits, etc.) — defaults can stay `0`/empty.
+5. **Sync from Project** or `railway templates publish nakatomicrm --readme-file docs/RAILWAY_TEMPLATE_README.md --demo-project <project-id> …`
+6. Smoke: `GET /health` (version `1.0.4`), branded welcome at `/`, `GET /oauth/login`, `POST /mcp` with Bearer key.
+7. `python -m app check-config` in the Railway shell with production env (optional).
 
 ---
 
@@ -92,7 +95,10 @@ account or R2 setup required — it's all inside Railway.
 | `GBRAIN_MCP_URL` | (empty) | | |
 | `GBRAIN_TOKEN` | (empty, sensitive) | | |
 | `DASHBOARD_ENABLED` | `false` | | Don't turn on in public deployments unless the dashboard is behind auth. |
-| `CORS_ORIGINS` | `*` | | |
+| `BOOTSTRAP_TOKEN` | (empty, sensitive) | | Recommended when the deploy URL may sit idle before first claim (`?token=`). |
+| `API_KEY_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `120` in production (`check-config` warns when `0`). |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `30` for `/auth/login`, `/bootstrap` in production. |
+| `CORS_ORIGINS` | `*` | | Prefer explicit origins in production. |
 | `WEBHOOK_WORKER_ENABLED` | `true` | | |
 | `WEBHOOK_TIMEOUT_SECONDS` | `10` | | |
 | `WEBHOOK_MAX_RETRIES` | `3` | | |
@@ -127,17 +133,21 @@ With the published template:
    vars pre-filled; `SECRET_KEY` generated. User only picks a project
    name + region.
 3. Deploy. 60–90s later, `https://<name>.up.railway.app/health`
-   returns `{"ok":true}` and `/mcp/` speaks streamable HTTP.
-4. To create the first workspace + user + API key, the user SSHes in
-   (or opens the Railway shell) and runs:
+   returns `{"ok":true,"version":"1.0.4",…}` and `/mcp/` speaks streamable HTTP.
+4. Open the public URL: **branded welcome** at `/` creates the first workspace,
+   owner account, and API key in one form (key shown once). OAuth authorize
+   uses the same Nakatomi Plaza UI at `/oauth/authorize`.
+5. Set `PUBLIC_BASE_URL` to your Railway HTTPS origin; run
+   `python -m app check-config` and set `BOOTSTRAP_TOKEN` / rate limits if the
+   URL may sit public before claim (see production table in [DEPLOY.md](./DEPLOY.md)).
+
+   CLI alternative (Railway shell):
 
    ```bash
    python -m scripts.seed --email you@example.com \
      --password 'hunter2hunter2' \
      --workspace-name "My Workspace" --workspace-slug mine
    ```
-
-   The script prints a ready-to-use API key.
 
 ---
 

@@ -1,6 +1,6 @@
 # Deploy and Host Nakatomi CRM on Railway
 
-Nakatomi is a **headless, agent-native CRM** (v1.0). REST + MCP + A2A + ACP on Postgres — built for Claude, ChatGPT, Cursor, and custom agent swarms.
+Nakatomi is a **headless, agent-native CRM** (v1.0.4). REST + MCP + A2A + ACP on Postgres — built for Claude, ChatGPT, Cursor, and custom agent swarms.
 
 ## About Hosting
 
@@ -42,9 +42,12 @@ Public URL: `https://railway.com/deploy/nakatomicrm`
 | `DATABASE_URL` | yes | Linked from Postgres |
 | `ENVIRONMENT` | yes | `production` |
 | `PUBLIC_BASE_URL` | recommended | Set to your Railway domain after first deploy |
+| `BOOTSTRAP_TOKEN` | recommended | Protect first-run `/` claim if the URL is public before you open it |
+| `API_KEY_RATE_LIMIT_PER_MINUTE` | optional | e.g. `120` in production |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | optional | e.g. `30` for OAuth/login/bootstrap |
 | `OTEL_*` / `SSO_*` | no | Optional observability and human SSO |
 
-After deploy, open `/health` — expect `"version":"1.0.0"`.
+After deploy, open `/health` — expect `"version":"1.0.4"`. First visit to `/` shows the branded welcome flow (workspace + API key).
 
 ### Agent MCP (important)
 

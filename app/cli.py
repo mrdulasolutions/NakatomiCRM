@@ -61,11 +61,42 @@ def cmd_check_config(_: argparse.Namespace) -> int:
 
     issues: list[str] = []
     warnings: list[str] = []
-    if settings.ENVIRONMENT.lower() in {"production", "prod"}:
-        if settings.SECRET_KEY in {"", "insecure-dev-key-change-me", "change-me-to-a-long-random-string"}:
+    prod = settings.ENVIRONMENT.lower() in {"production", "prod"}
+    insecure_secrets = {
+        "",
+        "insecure-dev-key-change-me",
+        "change-me-to-a-long-random-string",
+        "dev-only-change-me-0123456789abcdef",
+    }
+    if prod:
+        if settings.SECRET_KEY in insecure_secrets:
             issues.append("SECRET_KEY is a known insecure default — set a strong secret before production")
-        if len(settings.SECRET_KEY) < 32:
+        elif len(settings.SECRET_KEY) < 32:
             warnings.append("SECRET_KEY is shorter than 32 characters")
+        if settings.CORS_ORIGINS.strip() == "*":
+            warnings.append(
+                "CORS_ORIGINS is '*' — prefer explicit origins in production (credentials are enabled)"
+            )
+        if settings.API_KEY_RATE_LIMIT_PER_MINUTE <= 0:
+            warnings.append(
+                "API_KEY_RATE_LIMIT_PER_MINUTE is disabled — recommend e.g. 120 for production agent keys"
+            )
+        if not settings.BOOTSTRAP_TOKEN.strip():
+            warnings.append(
+                "BOOTSTRAP_TOKEN is unset — public deploys can be claimed by anyone until the first user exists"
+            )
+        if settings.AUTH_RATE_LIMIT_PER_MINUTE <= 0:
+            warnings.append(
+                "AUTH_RATE_LIMIT_PER_MINUTE is disabled — recommend e.g. 30 for /auth/login and /bootstrap"
+            )
+        sso_enabled = bool(
+            (settings.SSO_GOOGLE_CLIENT_ID and settings.SSO_GOOGLE_CLIENT_SECRET)
+            or (settings.SSO_GITHUB_CLIENT_ID and settings.SSO_GITHUB_CLIENT_SECRET)
+        )
+        if sso_enabled and not settings.PUBLIC_BASE_URL.strip():
+            warnings.append("SSO is configured but PUBLIC_BASE_URL is empty — OAuth redirects may be wrong")
+    elif settings.SECRET_KEY in insecure_secrets:
+        warnings.append("SECRET_KEY is a documented dev default — change before production")
     if settings.OTEL_ENABLED and not is_available():
         warnings.append("OTEL_ENABLED=true but OpenTelemetry packages are not installed")
     sso = {

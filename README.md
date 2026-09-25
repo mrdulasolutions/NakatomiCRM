@@ -6,8 +6,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![CI](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml/badge.svg)](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-150%2B%20passing-7ee787.svg)](#tests)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](./CHANGELOG.md)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/nakatomicrm)
 
 ```mermaid
@@ -87,6 +88,9 @@ be prompted for:
 - `SECRET_KEY` — paste the output of `openssl rand -hex 32`
 - (optional) S3 credentials if you want `STORAGE_BACKEND=s3`
 - (optional) memory-connector keys (`DOCDEPLOY_API_KEY`, `SUPERMEMORY_API_KEY`, …)
+
+Before exposing a production URL, run `python -m app check-config` with
+`ENVIRONMENT=production` and address any issues (see [docs/DEPLOY.md](./docs/DEPLOY.md)).
 
 Everything else has a sensible default. After the deploy promotes,
 `/health` returns `{"ok": true}` and `/mcp/` speaks streamable HTTP.

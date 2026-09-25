@@ -20,11 +20,12 @@ import logging
 import smtplib
 import threading
 import time
+from collections.abc import Iterable
+from contextlib import suppress
 from datetime import UTC, datetime
 from email import message_from_bytes
 from email.message import EmailMessage
 from email.utils import getaddresses, parsedate_to_datetime
-from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Activity, Contact, EmailConfig, EntityType, TimelineEvent, Workspace
+from app.security import decrypt_stored_secret
 
 log = logging.getLogger("nakatomi.email")
 
@@ -54,6 +56,9 @@ def send_email(
     """Send via SMTP using the workspace's configured creds. Raises on failure."""
     if not cfg.smtp_host or not cfg.smtp_user or not cfg.smtp_password:
         raise RuntimeError("SMTP not configured for this workspace")
+    smtp_password = decrypt_stored_secret(cfg.smtp_password)
+    if not smtp_password:
+        raise RuntimeError("SMTP not configured for this workspace")
 
     msg = EmailMessage()
     msg["From"] = cfg.from_address or cfg.smtp_user
@@ -74,7 +79,7 @@ def send_email(
         if cfg.smtp_use_tls and smtp_cls is smtplib.SMTP:
             smtp.starttls()
             smtp.ehlo()
-        smtp.login(cfg.smtp_user, cfg.smtp_password)
+        smtp.login(cfg.smtp_user, smtp_password)
         smtp.send_message(msg, to_addrs=recipients)
 
 
@@ -123,17 +128,17 @@ def _record_inbound(
 
     occurred_at = datetime.now(UTC)
     if dh := msg.get("Date"):
-        try:
+        with suppress(TypeError, ValueError):
             occurred_at = parsedate_to_datetime(dh)
-        except (TypeError, ValueError):
-            pass
 
     # Extract a plain-text body. Walk parts and grab the first text/plain.
     body_text = ""
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_type() == "text/plain" and not part.is_attachment():
-                body_text = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="replace")
+                payload = part.get_payload(decode=True)
+                if isinstance(payload, bytes):
+                    body_text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
                 break
     else:
         payload = msg.get_payload(decode=True)
@@ -180,11 +185,14 @@ def poll_workspace(cfg: EmailConfig) -> int:
     activities + advance the UID watermark)."""
     if not cfg.imap_host or not cfg.imap_user or not cfg.imap_password:
         return 0
+    imap_password = decrypt_stored_secret(cfg.imap_password)
+    if not imap_password:
+        return 0
 
     imap_cls = imaplib.IMAP4_SSL if cfg.imap_use_ssl else imaplib.IMAP4
     fetched = 0
     with imap_cls(cfg.imap_host, cfg.imap_port or (993 if cfg.imap_use_ssl else 143)) as imap:
-        imap.login(cfg.imap_user, cfg.imap_password)
+        imap.login(cfg.imap_user, imap_password)
         imap.select(cfg.imap_folder, readonly=True)
         # SEARCH UID > last_seen — IMAP4 SEARCH supports `UID N:*`.
         last_uid = cfg.last_polled_uid or 0

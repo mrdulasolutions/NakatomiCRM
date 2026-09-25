@@ -7,14 +7,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal, enforce_resource_scope
+from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
 from app.models import EntityType, Task, TaskStatus
 from app.schemas import OkResponse, Page, TaskIn, TaskOut, TaskPatch
 from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
-router = APIRouter(prefix="/tasks", tags=["tasks"],
+router = APIRouter(
+    prefix="/tasks",
+    tags=["tasks"],
     dependencies=[Depends(enforce_resource_scope("tasks"))],
 )
 

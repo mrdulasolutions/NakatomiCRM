@@ -25,8 +25,8 @@ import logging
 import re
 import threading
 import time
-from datetime import UTC, datetime, timedelta
-from typing import Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select
@@ -166,7 +166,9 @@ def sync_feed(feed: CalendarFeed) -> int:
             attendees = ev.get("attendees", [])
             primary_contact_ids = _match_contacts_for_attendees(db, feed_db.workspace_id, attendees)
             primary_contact_id = primary_contact_ids[0] if primary_contact_ids else None
-            occurred_at = ev.get("dtstart") or datetime.now(UTC)
+            dtstart_raw = ev.get("dtstart")
+            dtend_raw = ev.get("dtend")
+            occurred_at = dtstart_raw if isinstance(dtstart_raw, datetime) else datetime.now(UTC)
             data = {
                 "ics_uid": uid,
                 "feed_id": feed_db.id,
@@ -175,8 +177,8 @@ def sync_feed(feed: CalendarFeed) -> int:
                 "organizer": ev.get("organizer"),
                 "attendees": attendees,
                 "matched_contact_ids": primary_contact_ids,
-                "dtstart": ev.get("dtstart").isoformat() if ev.get("dtstart") else None,
-                "dtend": ev.get("dtend").isoformat() if ev.get("dtend") else None,
+                "dtstart": dtstart_raw.isoformat() if isinstance(dtstart_raw, datetime) else None,
+                "dtend": dtend_raw.isoformat() if isinstance(dtend_raw, datetime) else None,
             }
 
             existing_id = seen.get(uid)
@@ -218,7 +220,7 @@ def sync_feed(feed: CalendarFeed) -> int:
                 touched += 1
             else:
                 # Update — events get edited, attendees added, times shifted.
-                existing.subject = (ev.get("summary") or existing.subject)[:500]
+                existing.subject = (ev.get("summary") or existing.subject or "")[:500]
                 existing.body = (ev.get("description") or existing.body or "")[:50_000]
                 existing.occurred_at = occurred_at
                 existing.data = data

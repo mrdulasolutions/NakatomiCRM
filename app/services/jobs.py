@@ -96,7 +96,11 @@ def _dispatch(db: Session, job: Job) -> dict[str, Any]:
         doc = build_export(db, ws, include_timeline=bool(inp.get("include_timeline")))
         # Don't store full dump in result if huge — store counts
         counts = {k: len(v) if isinstance(v, list) else 1 for k, v in (doc or {}).items() if k != "meta"}
-        return {"export_keys": list((doc or {}).keys()), "counts": counts, "note": "use GET /export for full dump"}
+        return {
+            "export_keys": list((doc or {}).keys()),
+            "counts": counts,
+            "note": "use GET /export for full dump",
+        }
 
     if jt == "ingest":
         from app.deps import Principal

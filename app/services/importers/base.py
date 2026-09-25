@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -45,8 +44,6 @@ def run_crm_import(
     handler = handlers.get(src)
     if not handler:
         result = ImportResult(source=src or "unknown", dry_run=dry_run)
-        result.errors.append(
-            f"unknown source '{source}'; use hubspot|salesforce|pipedrive|attio|generic"
-        )
+        result.errors.append(f"unknown source '{source}'; use hubspot|salesforce|pipedrive|attio|generic")
         return result
     return handler(db, principal, payload=payload, mapping=mapping or {}, dry_run=dry_run)

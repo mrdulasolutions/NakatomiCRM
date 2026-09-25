@@ -27,6 +27,7 @@ from app.schemas import (
     EmailSendResponse,
     OkResponse,
 )
+from app.security import encrypt_stored_secret
 from app.services.email_io import send_email
 from app.services.events import emit
 
@@ -51,6 +52,10 @@ def put_config(
 ) -> EmailConfigOut:
     cfg = db.scalar(select(EmailConfig).where(EmailConfig.workspace_id == p.workspace.id))
     fields = payload.model_dump()
+    if fields.get("imap_password"):
+        fields["imap_password"] = encrypt_stored_secret(fields["imap_password"])
+    if fields.get("smtp_password"):
+        fields["smtp_password"] = encrypt_stored_secret(fields["smtp_password"])
     if cfg is None:
         cfg = EmailConfig(workspace_id=p.workspace.id, **fields)
         db.add(cfg)

@@ -5,12 +5,57 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-09-25 — Email secrets at rest
+
+### Added
+
+- **EmailConfig credential encryption** — IMAP/SMTP passwords stored with
+  Fernet (`enc:v1:` prefix); legacy plaintext rows still work until re-saved.
+- Alembic `0016_email_secrets_widen` widens password columns to `Text`.
+
+### Changed
+
+- Rotating `SECRET_KEY` requires re-saving email config (documented in DEPLOY).
+
+## [1.0.3] — 2026-09-25 — Production hardening
+
+### Added
+
+- **`AUTH_RATE_LIMIT_PER_MINUTE`** — in-process rate limit on
+  `POST /auth/login`, `/auth/signup`, and `/bootstrap` (0 = disabled).
+- **`BOOTSTRAP_TOKEN`** in `Settings` / `.env.example` (replaces raw env-only read).
+- **`python -m app check-config`** production warnings: CORS `*`, disabled API
+  key limits, missing bootstrap token, SSO without `PUBLIC_BASE_URL`.
+
+### Changed
+
+- [SECURITY.md](./SECURITY.md) — auth/bootstrap brute force mitigated when
+  `AUTH_RATE_LIMIT_PER_MINUTE` is set.
+
+## [1.0.2] — 2026-09-25 — Supply chain
+
+### Added
+
+- Dependabot for pip and GitHub Actions (weekly).
+- CI **`pip-audit`** step on `requirements.txt`.
+
+### Changed
+
+- GitHub Actions: bump `actions/checkout` and `actions/setup-python`.
+
+## [1.0.1] — 2026-09-25 — CI green
+
 ### Added
 
 - **MCP custom fields** — `list_custom_fields`, `create_custom_field`,
   `update_custom_field`, `delete_custom_field` (owner/admin for mutations).
 - **MCP** `list_object_types`; `describe_schema` now returns workspace
   `custom_fields` + `custom_object_types` + protocol SLA block.
+
+### Fixed
+
+- **Ruff** — remove unused imports and format the tree (CI lint job).
+- **Mypy** — email IMAP payload typing and calendar ICS update paths.
 
 ## [1.0.0] — 2026-08-07 — Production (v1.0 polish)
 

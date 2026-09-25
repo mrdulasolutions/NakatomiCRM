@@ -6,9 +6,7 @@ from __future__ import annotations
 def test_hubspot_import_dry_and_live(client, workspace):
     h = workspace["headers"]
     payload = {
-        "companies": [
-            {"id": "10", "properties": {"name": "Hub Co", "domain": "hubco.example"}}
-        ],
+        "companies": [{"id": "10", "properties": {"name": "Hub Co", "domain": "hubco.example"}}],
         "contacts": [
             {
                 "id": "20",
@@ -21,7 +19,10 @@ def test_hubspot_import_dry_and_live(client, workspace):
             }
         ],
         "deals": [
-            {"id": "30", "properties": {"dealname": "Hub Deal", "amount": "1500", "dealstage": "appointmentscheduled"}}
+            {
+                "id": "30",
+                "properties": {"dealname": "Hub Deal", "amount": "1500", "dealstage": "appointmentscheduled"},
+            }
         ],
     }
     r = client.post(
@@ -83,9 +84,7 @@ def test_salesforce_and_generic_import(client, workspace):
         headers=h,
         json={
             "source": "generic",
-            "payload": {
-                "contacts": [{"email": "gen@example.com", "first_name": "Gen", "external_id": "g1"}]
-            },
+            "payload": {"contacts": [{"email": "gen@example.com", "first_name": "Gen", "external_id": "g1"}]},
         },
     )
     assert r.status_code == 200

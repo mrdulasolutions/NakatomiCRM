@@ -8,8 +8,6 @@ Accepts either:
 
 from __future__ import annotations
 
-from typing import Any
-
 from sqlalchemy.orm import Session
 
 from app.deps import Principal
@@ -97,8 +95,10 @@ def import_hubspot(
         except (TypeError, ValueError):
             amount = None
         stage = (pr.get("dealstage") or pr.get("stage") or "").lower()
-        status = "won" if "won" in stage or "closedwon" in stage else (
-            "lost" if "lost" in stage or "closedlost" in stage else "open"
+        status = (
+            "won"
+            if "won" in stage or "closedwon" in stage
+            else ("lost" if "lost" in stage or "closedlost" in stage else "open")
         )
         upsert_deal(
             db,

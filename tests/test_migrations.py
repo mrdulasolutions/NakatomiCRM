@@ -59,10 +59,7 @@ def test_alembic_upgrade_head():
 
     with eng.connect() as conn:
         tables = {
-            r[0]
-            for r in conn.execute(
-                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-            )
+            r[0] for r in conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
         }
     assert "workspaces" in tables
     assert "api_keys" in tables
@@ -71,10 +68,7 @@ def test_alembic_upgrade_head():
         cols = {
             r[0]
             for r in conn.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name = 'api_keys'"
-                )
+                text("SELECT column_name FROM information_schema.columns " "WHERE table_name = 'api_keys'")
             )
         }
     assert "scopes" in cols

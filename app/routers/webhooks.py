@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, require_role, enforce_resource_scope
+from app.deps import Principal, enforce_resource_scope, get_principal, require_role
 from app.models import MemberRole, Webhook, WebhookDelivery
 from app.schemas import (
     OkResponse,
@@ -18,7 +18,9 @@ from app.schemas import (
     WebhookPatch,
 )
 
-router = APIRouter(prefix="/webhooks", tags=["webhooks"],
+router = APIRouter(
+    prefix="/webhooks",
+    tags=["webhooks"],
     dependencies=[Depends(enforce_resource_scope("webhooks"))],
 )
 

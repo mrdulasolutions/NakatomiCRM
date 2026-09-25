@@ -186,12 +186,15 @@ def create_record(
         raise HTTPException(status_code=403, detail="missing custom_fields:write")
     # soft validate required fields
     for fdef in t.fields or []:
-        if fdef.get("required") and not (payload.values or {}).get(fdef.get("name")):
-            if not payload.name or fdef.get("name") != "name":
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"required field missing: {fdef.get('name')}",
-                )
+        if (
+            fdef.get("required")
+            and not (payload.values or {}).get(fdef.get("name"))
+            and (not payload.name or fdef.get("name") != "name")
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"required field missing: {fdef.get('name')}",
+            )
     # upsert by external_id
     if payload.external_id:
         existing = db.scalar(

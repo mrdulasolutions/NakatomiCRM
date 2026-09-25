@@ -73,8 +73,10 @@ def import_salesforce(
     for o in opps:
         ext = str(o.get("Id") or o.get("id") or "")
         stage = (o.get("StageName") or o.get("stage") or "").lower()
-        status = "won" if "closed won" in stage or stage == "closedwon" else (
-            "lost" if "closed lost" in stage or stage == "closedlost" else "open"
+        status = (
+            "won"
+            if "closed won" in stage or stage == "closedwon"
+            else ("lost" if "closed lost" in stage or stage == "closedlost" else "open")
         )
         amount = o.get("Amount") or o.get("amount")
         try:

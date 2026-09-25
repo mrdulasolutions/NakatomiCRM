@@ -73,3 +73,38 @@ def parse_api_key_prefix(full: str) -> str | None:
 # ---------- HMAC signing (webhooks) ----------
 def hmac_sign(secret: str, body: bytes) -> str:
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+
+# ---------- Application-level secret storage (email IMAP/SMTP passwords) ----------
+_STORED_SECRET_PREFIX = "enc:v1:"
+
+
+def _fernet_key() -> bytes:
+    from base64 import urlsafe_b64encode
+
+    digest = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+    return urlsafe_b64encode(digest)
+
+
+def encrypt_stored_secret(plain: str | None) -> str | None:
+    """Encrypt a workspace secret for DB storage. Idempotent if already encrypted."""
+    if plain is None or plain == "":
+        return plain
+    if plain.startswith(_STORED_SECRET_PREFIX):
+        return plain
+    from cryptography.fernet import Fernet
+
+    token = Fernet(_fernet_key()).encrypt(plain.encode()).decode()
+    return f"{_STORED_SECRET_PREFIX}{token}"
+
+
+def decrypt_stored_secret(stored: str | None) -> str | None:
+    """Decrypt a stored secret; legacy plaintext values pass through unchanged."""
+    if stored is None or stored == "":
+        return stored
+    if not stored.startswith(_STORED_SECRET_PREFIX):
+        return stored
+    from cryptography.fernet import Fernet
+
+    token = stored[len(_STORED_SECRET_PREFIX) :].encode()
+    return Fernet(_fernet_key()).decrypt(token).decode()

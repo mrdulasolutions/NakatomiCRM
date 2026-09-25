@@ -70,7 +70,10 @@ def test_create_key_with_scopes(client, workspace):
         json={"first_name": "Nope", "email": "nope@example.com"},
     )
     assert r.status_code == 403
-    assert "missing scopes" in r.json()["detail"].lower() or "missing scopes" in r.json().get("error", "").lower()
+    assert (
+        "missing scopes" in r.json()["detail"].lower()
+        or "missing scopes" in r.json().get("error", "").lower()
+    )
 
 
 def test_default_member_key_blocks_email_send(client, workspace):

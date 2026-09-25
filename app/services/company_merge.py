@@ -37,9 +37,7 @@ def merge_companies(
         raise ValueError("loser not found")
 
     rewrites = {"contacts": 0, "deals": 0, "leads": 0, "child_companies": 0}
-    for c in db.query(Contact).filter(Contact.company_id == loser_id).all() if False else []:
-        pass  # use select
-    from sqlalchemy import select, update
+    from sqlalchemy import select
 
     contacts = db.scalars(select(Contact).where(Contact.company_id == loser_id)).all()
     deals = db.scalars(select(Deal).where(Deal.company_id == loser_id)).all()

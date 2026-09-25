@@ -28,14 +28,16 @@ import re
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Principal, get_principal, enforce_resource_scope
+from app.deps import Principal, enforce_resource_scope, get_principal
 from app.models import Deal, DealStatus, Stage
 
-router = APIRouter(prefix="/forecast", tags=["forecast"],
+router = APIRouter(
+    prefix="/forecast",
+    tags=["forecast"],
     dependencies=[Depends(enforce_resource_scope("forecast"))],
 )
 

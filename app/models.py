@@ -573,16 +573,12 @@ class EmailConfig(Base, TimestampMixin):
     that only need outbound (agents sending email through Nakatomi) can
     fill SMTP only and leave IMAP unset.
 
-    Passwords are stored in plaintext for now. v0.4 will add
-    application-level encryption keyed off ``SECRET_KEY``. Until then,
-    treat them like any other workspace secret — DB row-level access is
-    already gated by FK + workspace_id checks.
+    Passwords are encrypted at rest (Fernet keyed from ``SECRET_KEY``).
+    Re-save config after rotating ``SECRET_KEY``.
     """
 
     __tablename__ = "email_configs"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", name="uq_email_config_workspace"),
-    )
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_email_config_workspace"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -590,14 +586,14 @@ class EmailConfig(Base, TimestampMixin):
     imap_host: Mapped[str | None] = mapped_column(String(255))
     imap_port: Mapped[int | None] = mapped_column(Integer)
     imap_user: Mapped[str | None] = mapped_column(String(255))
-    imap_password: Mapped[str | None] = mapped_column(String(255))
+    imap_password: Mapped[str | None] = mapped_column(Text)
     imap_folder: Mapped[str] = mapped_column(String(64), default="INBOX", nullable=False)
     imap_use_ssl: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     smtp_host: Mapped[str | None] = mapped_column(String(255))
     smtp_port: Mapped[int | None] = mapped_column(Integer)
     smtp_user: Mapped[str | None] = mapped_column(String(255))
-    smtp_password: Mapped[str | None] = mapped_column(String(255))
+    smtp_password: Mapped[str | None] = mapped_column(Text)
     smtp_use_tls: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     from_address: Mapped[str | None] = mapped_column(String(255))
@@ -619,9 +615,7 @@ class CalendarFeed(Base, TimestampMixin):
     """
 
     __tablename__ = "calendar_feeds"
-    __table_args__ = (
-        Index("ix_calendar_feed_workspace", "workspace_id"),
-    )
+    __table_args__ = (Index("ix_calendar_feed_workspace", "workspace_id"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
@@ -1038,7 +1032,9 @@ class ApprovalRequest(Base, TimestampMixin):
     )
 
     requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    requested_by_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    requested_by_api_key_id: Mapped[str | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL")
+    )
     decided_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     decided_by_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -1095,7 +1091,9 @@ class A2ATask(Base, TimestampMixin):
     context_etag: Mapped[str | None] = mapped_column(String(64))
 
     requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    requested_by_api_key_id: Mapped[str | None] = mapped_column(ForeignKey("api_keys.id", ondelete="SET NULL"))
+    requested_by_api_key_id: Mapped[str | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL")
+    )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     data: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
@@ -1104,9 +1102,7 @@ class CustomObjectType(Base, TimestampMixin):
     """Workspace-defined object type (moldable CRM model)."""
 
     __tablename__ = "custom_object_types"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "slug", name="uq_custom_object_slug"),
-    )
+    __table_args__ = (UniqueConstraint("workspace_id", "slug", name="uq_custom_object_slug"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)

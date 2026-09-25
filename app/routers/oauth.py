@@ -26,6 +26,7 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -33,6 +34,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.brand_pages import (
+    esc,
+    render_authorize_page,
+    render_login_landing,
+    render_oauth_complete,
+    render_status_page,
+)
 from app.db import get_db
 from app.models import ApiKey, MemberRole, Membership, OAuthClient, OAuthCode, User, Workspace
 from app.security import generate_api_key, hash_api_key, verify_password
@@ -171,67 +179,121 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Authorization endpoint (login + consent)
+# Branded HTML (login, success, error)
 # ---------------------------------------------------------------------------
 
 
-_LOGIN_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Authorize · Nakatomi</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  :root { color-scheme: dark; }
-  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #0b0d10; color: #e6e8ea; margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
-  .card { background: #11151a; border: 1px solid #20242a; border-radius: 12px; padding: 32px; width: 380px; max-width: 92vw; }
-  h1 { font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #6cf; margin: 0 0 6px 0; }
-  p { color: #9ab; font-size: 12px; line-height: 1.55; margin: 0 0 20px 0; }
-  .client { background: #0e1216; border: 1px solid #20242a; border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #e6e8ea; margin-bottom: 20px; }
-  .client strong { color: #c8a8ff; }
-  label { display: block; font-size: 11px; color: #9ab; margin-bottom: 6px; letter-spacing: 0.5px; text-transform: uppercase; margin-top: 14px; }
-  input, select, button { font: inherit; width: 100%; padding: 10px 12px; background: #0b0d10; color: #e6e8ea; border: 1px solid #20242a; border-radius: 6px; box-sizing: border-box; }
-  select { cursor: pointer; }
-  button { background: #1a2a3a; color: #6cf; cursor: pointer; margin-top: 20px; border-color: #2d3540; }
-  button:hover { background: #223140; }
-  .err { color: #ff8b8b; font-size: 11px; margin-top: 12px; padding: 8px 10px; background: #2a1212; border: 1px solid #4a2830; border-radius: 6px; }
-  .scope { color: #7ee787; font-size: 11px; }
-  .ft { color: #7a8590; font-size: 10px; margin-top: 18px; text-align: center; }
-</style>
-</head>
-<body>
-<form class="card" method="post" action="/oauth/authorize">
-  <h1>Authorize</h1>
-  <p>Grant <strong>{client_name}</strong> access to your Nakatomi workspace.</p>
-  <div class="client">
-    Requesting scope: <span class="scope">{scope}</span><br>
-    Redirect: <span style="color:#9ab">{redirect_uri}</span>
-  </div>
+def _oauth_error_page(
+    *,
+    status_code: int,
+    headline: str,
+    message: str,
+    detail: str | None = None,
+) -> HTMLResponse:
+    return HTMLResponse(
+        render_status_page(
+            variant="error",
+            title="Authorization error",
+            headline=headline,
+            message=message,
+            detail=detail,
+            primary_label="Return home",
+            primary_href="/",
+            secondary_label="Sign-in help",
+            secondary_href="/oauth/login",
+        ),
+        status_code=status_code,
+    )
 
-  <label>email</label>
-  <input name="email" type="email" required autofocus value="{email}" />
 
-  <label>password</label>
-  <input name="password" type="password" required />
+@router.get("/oauth/login", response_class=HTMLResponse, include_in_schema=False)
+def oauth_login_landing() -> HTMLResponse:
+    """Human-readable entry when users follow links from the welcome page."""
+    return HTMLResponse(render_login_landing())
 
-  {workspace_select}
 
-  {error_html}
+@router.get("/oauth/success", response_class=HTMLResponse, include_in_schema=False)
+def oauth_success_preview(
+    client: str = Query("Your MCP client", description="Client name for the success message"),
+) -> HTMLResponse:
+    """Static success messaging (demo / documentation). Live OAuth uses ``/oauth/complete``."""
+    return HTMLResponse(
+        render_status_page(
+            variant="success",
+            title="Authorized",
+            headline="You are connected",
+            message=f"{client} can now access your Nakatomi workspace on your behalf.",
+            detail="You may close this window and return to your agent. Tokens refresh automatically per OAuth 2.1.",
+            primary_label="Return home",
+            primary_href="/",
+        )
+    )
 
-  <input type="hidden" name="client_id" value="{client_id}" />
-  <input type="hidden" name="redirect_uri" value="{redirect_uri}" />
-  <input type="hidden" name="response_type" value="{response_type}" />
-  <input type="hidden" name="state" value="{state}" />
-  <input type="hidden" name="scope" value="{scope}" />
-  <input type="hidden" name="code_challenge" value="{code_challenge}" />
-  <input type="hidden" name="code_challenge_method" value="{code_challenge_method}" />
 
-  <button type="submit">Sign in &amp; authorize</button>
-  <div class="ft">Nakatomi CRM · OAuth 2.1 + PKCE</div>
-</form>
-</body>
-</html>
-"""
+@router.get("/oauth/complete", response_class=HTMLResponse, include_in_schema=False)
+def oauth_complete(
+    client: str = Query("Application"),
+    ru: str = Query(..., description="Registered redirect_uri from the authorize step"),
+    to: str = Query(..., description="Full redirect URL including authorization code"),
+) -> HTMLResponse:
+    """Post-authorize interstitial — validates ``to`` then returns the user to the MCP client."""
+    if not to.startswith(ru):
+        return _oauth_error_page(
+            status_code=400,
+            headline="Invalid redirect",
+            message="The continuation URL does not match the registered redirect URI.",
+        )
+    return HTMLResponse(render_oauth_complete(client_name=client, continue_url=to))
+
+
+@router.get("/oauth/complete/preview", response_class=HTMLResponse, include_in_schema=False)
+def oauth_complete_preview() -> HTMLResponse:
+    return HTMLResponse(
+        render_oauth_complete(
+            client_name="Cursor",
+            continue_url="http://127.0.0.1/callback?code=preview-not-valid",
+        )
+    )
+
+
+@router.get("/oauth/error", response_class=HTMLResponse, include_in_schema=False)
+def oauth_error_preview(
+    headline: str = Query("Authorization failed"),
+    message: str = Query("We could not complete the OAuth request."),
+    detail: str | None = Query(None),
+) -> HTMLResponse:
+    return _oauth_error_page(
+        status_code=400,
+        headline=headline,
+        message=message,
+        detail=detail,
+    )
+
+
+@router.get("/oauth/authorize/preview", response_class=HTMLResponse, include_in_schema=False)
+def authorize_preview(error: str | None = Query(None)) -> HTMLResponse:
+    """Design preview of the authorize form (no live OAuth client required)."""
+    preview_client = OAuthClient(
+        name="Cursor",
+        redirect_uris=["http://127.0.0.1/callback"],
+        grant_types=["authorization_code"],
+        response_types=["code"],
+        scopes=["mcp"],
+    )
+    preview_client.id = "preview000000000000000000000001"
+    return HTMLResponse(
+        _render_login(
+            client=preview_client,
+            redirect_uri="http://127.0.0.1/callback",
+            response_type="code",
+            state="preview",
+            scope="mcp",
+            code_challenge="preview-challenge-not-for-token-exchange",
+            code_challenge_method="S256",
+            email="you@company.com",
+            error=error,
+        )
+    )
 
 
 def _render_login(
@@ -249,39 +311,29 @@ def _render_login(
 ) -> str:
     ws_html = ""
     if workspaces and len(workspaces) > 1:
-        options = "\n".join(f'<option value="{ws.id}">{ws.name} ({ws.slug})</option>' for ws in workspaces)
-        ws_html = f'<label>workspace</label><select name="workspace_id">{options}</select>'
-    error_html = f'<div class="err">{error}</div>' if error else ""
-
-    # Simple HTML escaping for user-facing fields so a hostile client_name
-    # can't break out of the template.
-    def esc(s: str) -> str:
-        return (
-            s.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&#39;")
+        options = "\n".join(
+            f'<option value="{esc(ws.id)}">{esc(ws.name)} ({esc(ws.slug)})</option>' for ws in workspaces
         )
+        ws_html = f'<label for="workspace_id">Workspace</label><select id="workspace_id" name="workspace_id">{options}</select>'
 
-    # str.replace instead of .format() — the CSS in the template has literal
-    # `{ }` pairs which the format-string mini-language tries to parse.
-    html = _LOGIN_PAGE
-    for marker, value in (
-        ("{client_name}", esc(client.name)),
-        ("{client_id}", esc(client.id)),
-        ("{redirect_uri}", esc(redirect_uri)),
-        ("{response_type}", esc(response_type)),
-        ("{state}", esc(state)),
-        ("{scope}", esc(scope)),
-        ("{code_challenge}", esc(code_challenge)),
-        ("{code_challenge_method}", esc(code_challenge_method)),
-        ("{email}", esc(email)),
-        ("{error_html}", error_html),
-        ("{workspace_select}", ws_html),
-    ):
-        html = html.replace(marker, value)
-    return html
+    return render_authorize_page(
+        client_name=client.name,
+        client_id=client.id,
+        redirect_uri=redirect_uri,
+        response_type=response_type,
+        state=state,
+        scope=scope,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
+        email=email,
+        error=error,
+        workspace_select_html=ws_html,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Authorization endpoint (login + consent)
+# ---------------------------------------------------------------------------
 
 
 @router.get("/oauth/authorize", response_class=HTMLResponse)
@@ -299,13 +351,26 @@ def authorize_get(
     """Render the login form. The browser lands here after the MCP client
     pops open the OAuth URL."""
     if response_type != "code":
-        raise HTTPException(status_code=400, detail="only response_type=code is supported")
+        return _oauth_error_page(
+            status_code=400,
+            headline="Unsupported response type",
+            message="This server only supports the authorization code flow (response_type=code).",
+        )
     if code_challenge_method != "S256":
-        raise HTTPException(status_code=400, detail="only code_challenge_method=S256 is supported")
+        return _oauth_error_page(
+            status_code=400,
+            headline="PKCE required",
+            message="Use code_challenge_method=S256 with your MCP client.",
+        )
 
     client = db.get(OAuthClient, client_id)
     if not client or redirect_uri not in client.redirect_uris:
-        raise HTTPException(status_code=400, detail="unknown client_id or redirect_uri not registered")
+        return _oauth_error_page(
+            status_code=400,
+            headline="Unknown client",
+            message="The client_id or redirect_uri is not registered with this Nakatomi instance.",
+            detail="Register the connector via POST /oauth/register or check your MCP client settings.",
+        )
 
     return HTMLResponse(
         _render_login(
@@ -420,7 +485,12 @@ def authorize_post(
     target = f"{redirect_uri}{sep}code={code}"
     if state:
         target += f"&state={state}"
-    return RedirectResponse(url=target, status_code=302)
+    complete_url = (
+        f"/oauth/complete?client={quote(client.name)}"
+        f"&ru={quote(redirect_uri, safe='')}"
+        f"&to={quote(target, safe='')}"
+    )
+    return RedirectResponse(url=complete_url, status_code=302)
 
 
 # ---------------------------------------------------------------------------

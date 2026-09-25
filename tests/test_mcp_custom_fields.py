@@ -69,17 +69,13 @@ def test_mcp_custom_field_duplicate_and_bad_type(workspace):
         options=["A", "B"],
     )
     try:
-        create_custom_field(
-            ctx, entity_type="company", name="tier", label="Tier again", field_type="string"
-        )
+        create_custom_field(ctx, entity_type="company", name="tier", label="Tier again", field_type="string")
         raise AssertionError("expected duplicate RuntimeError")
     except RuntimeError as exc:
         assert "already exists" in str(exc)
 
     try:
-        create_custom_field(
-            ctx, entity_type="contact", name="bad", label="Bad", field_type="xml"
-        )
+        create_custom_field(ctx, entity_type="contact", name="bad", label="Bad", field_type="xml")
         raise AssertionError("expected bad type RuntimeError")
     except RuntimeError as exc:
         assert "field_type" in str(exc)

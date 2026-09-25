@@ -64,16 +64,17 @@ def _yaml_frontmatter(values: dict[str, Any]) -> str:
     """Minimal YAML emitter — stays readable, escapes strings, handles lists of scalars.
     GBrain parses its frontmatter itself; we only need well-formed YAML for the
     common scalar + list-of-scalar case."""
+
     def _emit(v: Any) -> str:
         if isinstance(v, bool):
             return "true" if v else "false"
         if v is None:
             return "null"
-        if isinstance(v, (int, float)):
+        if isinstance(v, int | float):
             return str(v)
         # string: quote if it has anything remotely tricky
         s = str(v)
-        if s == "" or any(c in s for c in ':#\n"\'[]{}') or s.strip() != s:
+        if s == "" or any(c in s for c in ":#\n\"'[]{}") or s.strip() != s:
             return json.dumps(s)
         return s
 
@@ -225,7 +226,20 @@ class GBrainConnector(MemoryConnector):
                 "crm_entity_id": crm_entity_id,
                 "occurred_at": ts.isoformat(),
                 "tags": [f"nakatomi:{crm_entity_type}", f"ws:{workspace_id}"],
-                **{k: v for k, v in metadata.items() if isinstance(v, (str, int, float, bool)) and k not in {"source", "workspace_id", "event_type", "crm_entity_type", "crm_entity_id", "tags"}},
+                **{
+                    k: v
+                    for k, v in metadata.items()
+                    if isinstance(v, str | int | float | bool)
+                    and k
+                    not in {
+                        "source",
+                        "workspace_id",
+                        "event_type",
+                        "crm_entity_type",
+                        "crm_entity_id",
+                        "tags",
+                    }
+                },
             }
         )
         content = f"{fm}\n\n{text}\n"
@@ -292,7 +306,11 @@ class GBrainConnector(MemoryConnector):
                     external_id=str(slug),
                     text=it.get("content") or it.get("text") or it.get("snippet") or "",
                     score=float(it.get("score") or it.get("relevance") or 0.0),
-                    metadata={k: v for k, v in it.items() if k not in {"content", "text", "snippet", "score", "relevance", "slug"}},
+                    metadata={
+                        k: v
+                        for k, v in it.items()
+                        if k not in {"content", "text", "snippet", "score", "relevance", "slug"}
+                    },
                 )
             )
             if len(out) >= limit:

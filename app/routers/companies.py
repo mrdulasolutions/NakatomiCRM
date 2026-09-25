@@ -7,7 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, get_pagination, get_principal, enforce_resource_scope
+from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
 from app.models import Company, EntityType
 from app.schemas import (
     BulkUpsertResult,
@@ -22,7 +22,9 @@ from app.services.diffs import compute_changes
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
-router = APIRouter(prefix="/companies", tags=["companies"],
+router = APIRouter(
+    prefix="/companies",
+    tags=["companies"],
     dependencies=[Depends(enforce_resource_scope("companies"))],
 )
 

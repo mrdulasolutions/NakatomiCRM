@@ -384,14 +384,19 @@ def create_company(
     tags: list[str] | None = None,
     external_id: str | None = None,
     data: dict | None = None,
-
     idempotency_key: str | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "companies:write")
-        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
-        _replay, _save = mcp_idempotency(db, p, tool="create_company", idempotency_key=idempotency_key, args=_idem_args)
+        _idem_args = {
+            k: v
+            for k, v in locals().items()
+            if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")
+        }
+        _replay, _save = mcp_idempotency(
+            db, p, tool="create_company", idempotency_key=idempotency_key, args=_idem_args
+        )
         if _replay is not None:
             return _replay
         c = Company(
@@ -549,14 +554,19 @@ def create_deal(
     expected_close_date: datetime | None = None,
     tags: list[str] | None = None,
     data: dict | None = None,
-
     idempotency_key: str | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "deals:write")
-        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
-        _replay, _save = mcp_idempotency(db, p, tool="create_deal", idempotency_key=idempotency_key, args=_idem_args)
+        _idem_args = {
+            k: v
+            for k, v in locals().items()
+            if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")
+        }
+        _replay, _save = mcp_idempotency(
+            db, p, tool="create_deal", idempotency_key=idempotency_key, args=_idem_args
+        )
         if _replay is not None:
             return _replay
         if not pipeline_id:
@@ -735,14 +745,19 @@ def create_task(
     entity_type: str | None = None,
     entity_id: str | None = None,
     data: dict | None = None,
-
     idempotency_key: str | None = None,
 ) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "tasks:write")
-        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
-        _replay, _save = mcp_idempotency(db, p, tool="create_task", idempotency_key=idempotency_key, args=_idem_args)
+        _idem_args = {
+            k: v
+            for k, v in locals().items()
+            if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")
+        }
+        _replay, _save = mcp_idempotency(
+            db, p, tool="create_task", idempotency_key=idempotency_key, args=_idem_args
+        )
         if _replay is not None:
             return _replay
         t = Task(
@@ -1125,15 +1140,20 @@ def create_product(
     description: str | None = None,
     tags: list[str] | None = None,
     data: dict | None = None,
-
     idempotency_key: str | None = None,
 ) -> dict:
     """Add a product to the workspace catalog. Returns the new product."""
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "products:write")
-        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
-        _replay, _save = mcp_idempotency(db, p, tool="create_product", idempotency_key=idempotency_key, args=_idem_args)
+        _idem_args = {
+            k: v
+            for k, v in locals().items()
+            if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")
+        }
+        _replay, _save = mcp_idempotency(
+            db, p, tool="create_product", idempotency_key=idempotency_key, args=_idem_args
+        )
         if _replay is not None:
             return _replay
         prod = Product(
@@ -1181,9 +1201,7 @@ def search_products(
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "products:read")
-        query = select(Product).where(
-            Product.workspace_id == p.workspace.id, Product.deleted_at.is_(None)
-        )
+        query = select(Product).where(Product.workspace_id == p.workspace.id, Product.deleted_at.is_(None))
         if q:
             like = f"%{q.lower()}%"
             query = query.where(
@@ -1215,7 +1233,6 @@ def add_line_item(
     currency: str | None = None,
     position: int = 0,
     data: dict | None = None,
-
     idempotency_key: str | None = None,
 ) -> dict:
     """Add a line to a deal. Either reference a ``product_id`` (snapshots
@@ -1224,8 +1241,14 @@ def add_line_item(
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "deals:write")
-        _idem_args = {k: v for k, v in locals().items() if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")}
-        _replay, _save = mcp_idempotency(db, p, tool="add_line_item", idempotency_key=idempotency_key, args=_idem_args)
+        _idem_args = {
+            k: v
+            for k, v in locals().items()
+            if k not in ("ctx", "p", "db", "idempotency_key") and not k.startswith("_")
+        }
+        _replay, _save = mcp_idempotency(
+            db, p, tool="add_line_item", idempotency_key=idempotency_key, args=_idem_args
+        )
         if _replay is not None:
             return _replay
         deal = db.get(Deal, deal_id)
@@ -1793,7 +1816,12 @@ def upsert_account_map(
             db.add(company)
             db.flush()
             _record_event(
-                db, p, event_type="company.created", entity_type=EntityType.company, entity_id=company.id, payload={"via": "upsert_account_map"}
+                db,
+                p,
+                event_type="company.created",
+                entity_type=EntityType.company,
+                entity_id=company.id,
+                payload={"via": "upsert_account_map"},
             )
         else:
             company.name = company_name or company.name
@@ -1846,7 +1874,12 @@ def upsert_account_map(
                 if email:
                     email_to_id[email.lower()] = c.id
                 _record_event(
-                    db, p, event_type="contact.created", entity_type=EntityType.contact, entity_id=c.id, payload={"via": "upsert_account_map"}
+                    db,
+                    p,
+                    event_type="contact.created",
+                    entity_type=EntityType.contact,
+                    entity_id=c.id,
+                    payload={"via": "upsert_account_map"},
                 )
 
         rel_ids: list[str] = []
@@ -2012,7 +2045,9 @@ def log_interaction(
             "entity_id": entity_id,
             "note_body": note_body,
         }
-        replay, save = mcp_idempotency(db, p, tool="log_interaction", idempotency_key=idempotency_key, args=args)
+        replay, save = mcp_idempotency(
+            db, p, tool="log_interaction", idempotency_key=idempotency_key, args=args
+        )
         if replay is not None:
             return replay
         et = EntityType(entity_type) if entity_type else None
@@ -2111,7 +2146,12 @@ def create_lead(
         db.add(row)
         db.flush()
         _record_event(
-            db, p, event_type="lead.created", entity_type=EntityType.lead, entity_id=row.id, payload={"via": "mcp"}
+            db,
+            p,
+            event_type="lead.created",
+            entity_type=EntityType.lead,
+            entity_id=row.id,
+            payload={"via": "mcp"},
         )
         db.commit()
         db.refresh(row)
@@ -2264,9 +2304,9 @@ def create_quote(
     """Create a draft quote on a deal with optional line items.
     lines: [{name, unit_price, quantity?, product_id?}]. Scopes: quotes:write.
     """
-    from app.models import Deal, Product, Quote, QuoteLineItem
-    from app.schemas import QuoteLineIn
+    from app.models import Deal, Quote, QuoteLineItem
     from app.routers.quotes import _materialize_line, _recalc
+    from app.schemas import QuoteLineIn
 
     p, db = _principal_from_ctx(ctx)
     try:
@@ -2358,7 +2398,7 @@ def list_policies(ctx: Context) -> dict:
 @mcp.tool()
 def start_job(ctx: Context, job_type: str, input: dict | None = None, run_async: bool = True) -> dict:
     """Start an async job (ingest|export|merge|custom). Scopes: jobs:write."""
-    from app.services.jobs import create_job, enqueue, _run_job
+    from app.services.jobs import _run_job, create_job, enqueue
 
     p, db = _principal_from_ctx(ctx)
     try:
@@ -2467,9 +2507,7 @@ def import_crm(
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "export:write")
-        result = run_crm_import(
-            db, p, source=source, payload=payload, mapping=mapping, dry_run=dry_run
-        )
+        result = run_crm_import(db, p, source=source, payload=payload, mapping=mapping, dry_run=dry_run)
         return {
             "source": result.source,
             "dry_run": result.dry_run,
@@ -2515,16 +2553,13 @@ def list_custom_fields(
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "custom_fields:read")
-        q = select(CustomFieldDefinition).where(
-            CustomFieldDefinition.workspace_id == p.workspace.id
-        )
+        q = select(CustomFieldDefinition).where(CustomFieldDefinition.workspace_id == p.workspace.id)
         if entity_type:
             try:
                 et = EntityType(entity_type)
             except ValueError as exc:
                 raise RuntimeError(
-                    f"unknown entity_type {entity_type!r}; "
-                    f"use one of {[e.value for e in EntityType]}"
+                    f"unknown entity_type {entity_type!r}; " f"use one of {[e.value for e in EntityType]}"
                 ) from exc
             q = q.where(CustomFieldDefinition.entity_type == et)
         q = q.order_by(CustomFieldDefinition.entity_type, CustomFieldDefinition.name)
@@ -2557,9 +2592,7 @@ def create_custom_field(
         _require_scopes(p, "custom_fields:write")
         _require_adminish(p)
         if field_type not in _ALLOWED_FIELD_TYPES:
-            raise RuntimeError(
-                f"field_type must be one of: {sorted(_ALLOWED_FIELD_TYPES)}"
-            )
+            raise RuntimeError(f"field_type must be one of: {sorted(_ALLOWED_FIELD_TYPES)}")
         if not name or not name[0].islower() or not all(c.isalnum() or c == "_" for c in name):
             raise RuntimeError("name must be snake_case starting with a letter (e.g. linkedin_url)")
         try:
@@ -2582,9 +2615,7 @@ def create_custom_field(
             db.flush()
         except Exception as exc:  # noqa: BLE001
             db.rollback()
-            raise RuntimeError(
-                f"a field named '{name}' already exists on {entity_type}"
-            ) from exc
+            raise RuntimeError(f"a field named '{name}' already exists on {entity_type}") from exc
         db.commit()
         db.refresh(row)
         return _serialize(row)
@@ -2617,9 +2648,7 @@ def update_custom_field(
             raise RuntimeError(f"custom field not found: {field_id}")
         if field_type is not None:
             if field_type not in _ALLOWED_FIELD_TYPES:
-                raise RuntimeError(
-                    f"field_type must be one of: {sorted(_ALLOWED_FIELD_TYPES)}"
-                )
+                raise RuntimeError(f"field_type must be one of: {sorted(_ALLOWED_FIELD_TYPES)}")
             row.field_type = field_type
         if label is not None:
             row.label = label

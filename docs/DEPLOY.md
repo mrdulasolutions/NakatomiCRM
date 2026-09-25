@@ -42,10 +42,16 @@ python -m app check-config
 | Setting | Notes |
 | --- | --- |
 | `ENVIRONMENT=production` | Enables SECRET_KEY boot guard |
-| `SECRET_KEY` | ≥32 random chars; not a documented default |
+| `SECRET_KEY` | ≥32 random chars; not a documented default; keys email credential encryption |
 | `DATABASE_URL` | Managed Postgres; run `alembic upgrade head` |
 | `PUBLIC_BASE_URL` | Canonical HTTPS origin (SSO / OAuth redirects) |
+| `BOOTSTRAP_TOKEN` | Shared secret for `?token=` on first-run bootstrap (recommended on public URLs) |
+| `API_KEY_RATE_LIMIT_PER_MINUTE` | Recommend `120` for agent keys in production |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | Recommend `30` for `/auth/login`, `/auth/signup`, `/bootstrap` |
+| `CORS_ORIGINS` | Prefer explicit origins instead of `*` in production |
 | `OTEL_ENABLED` | Optional; install OTel packages first ([OBSERVABILITY.md](./OBSERVABILITY.md)) |
 | SSO client ids | Optional ([SSO.md](./SSO.md)) |
+
+After rotating `SECRET_KEY`, re-save workspace email config so IMAP/SMTP passwords re-encrypt.
 
 Protocol stability: [PROTOCOL_SLA.md](./PROTOCOL_SLA.md).

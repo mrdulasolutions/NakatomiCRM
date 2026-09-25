@@ -128,7 +128,9 @@ def create_product(
 
 
 @router.get("/products/{product_id}", response_model=ProductOut)
-def get_product(product_id: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)) -> ProductOut:
+def get_product(
+    product_id: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)
+) -> ProductOut:
     prod = db.get(Product, product_id)
     if not prod or prod.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
@@ -255,7 +257,11 @@ def add_line_item(
         event_type="deal.line_item_added",
         entity_type=EntityType.deal,
         entity_id=deal.id,
-        payload={"line_item_id": line.id, "name": line.name, "amount": float(line.unit_price) * float(line.quantity)},
+        payload={
+            "line_item_id": line.id,
+            "name": line.name,
+            "amount": float(line.unit_price) * float(line.quantity),
+        },
     )
     return DealLineItemOut.model_validate(line)
 
