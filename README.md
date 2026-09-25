@@ -2,13 +2,13 @@
 
 **The open-source CRM built for AI agents.**
 
-Nakatomi is an **agent-first, self-hostable CRM** designed to be operated by AI agents through **MCP, REST, A2A, and agent-native discovery**.
+Nakatomi is a **headless, agent-first, self-hostable CRM** designed to be operated by AI agents through **MCP, REST, A2A, and agent-native discovery**.
 
 It is not a traditional CRM with an AI assistant bolted on.
 
-**The agent is the primary user.**
+**The agent is the primary user. Humans stay in the loop when it matters.**
 
-Nakatomi provides the persistent, structured business state that agents need: people, companies, deals, relationships, activities, tasks, files, timelines, policies, approvals, and audit history.
+Nakatomi provides the persistent, structured business state agents need to operate a CRM through MCP, REST, A2A, and agent-native discovery: people, companies, deals, relationships, activities, tasks, files, timelines, policies, approvals, and audit history.
 
 You own the server.  
 You own the database.  
