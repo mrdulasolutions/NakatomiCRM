@@ -22,9 +22,9 @@ fallback is still in git history if we ever need to go back to it.
 | Marketplace metadata | Sync env vars + republish when [`.env.example`](../.env.example) changes (see checklist below) |
 | Code on new installs | Pulled from **GitHub `main`** at deploy time — keep `main` green |
 
-**Refresh checklist after a release (e.g. v1.0.6):**
+**Refresh checklist after a release (e.g. v1.0.7):**
 
-1. Push `main` (and tag `v1.0.6` if you cut a release).
+1. Push `main` (and tag `v1.0.7` if you cut a release).
 2. Wait for GitHub Actions green on `main`.
 3. Redeploy demo service: `railway up --service nakatomi` (or Railway **Redeploy**).
 4. In Railway **template settings**, add/sync any new optional vars from the table below (`BOOTSTRAP_TOKEN`, rate limits, etc.) — defaults can stay `0`/empty.

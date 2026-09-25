@@ -145,12 +145,16 @@ function clearKey() {
 }
 
 function showAuthError(msg) {
-  const wrap = document.getElementById("auth-wrap");
+  setDashboardAuth(true);
   const err = document.getElementById("auth-error");
-  wrap.hidden = false;
-  document.getElementById("app").hidden = true;
   err.hidden = false;
   err.textContent = msg;
+}
+
+function setDashboardAuth(showLogin) {
+  document.querySelector(".dash-shell").classList.toggle("dash-authed", !showLogin);
+  document.getElementById("auth-wrap").hidden = showLogin;
+  document.getElementById("app").hidden = showLogin;
 }
 
 async function api(path) {
@@ -426,10 +430,12 @@ function wireUi() {
 }
 
 async function init() {
-  if (!getKey()) { document.getElementById("auth-wrap").hidden = false; return; }
-  document.getElementById("auth-wrap").hidden = true;
+  if (!getKey()) {
+    setDashboardAuth(true);
+    return;
+  }
+  setDashboardAuth(false);
   document.getElementById("auth-error").hidden = true;
-  document.getElementById("app").hidden = false;
   try {
     await loadAudit();
   } catch (e) {

@@ -5,6 +5,12 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-09-25 — Dashboard login panel visibility
+
+### Fixed
+
+- Hide the **Connect your API key** panel when authenticated (`display:flex` no longer overrides the HTML `hidden` attribute).
+
 ## [1.0.6] — 2026-09-25 — Dashboard API key persistence
 
 ### Fixed

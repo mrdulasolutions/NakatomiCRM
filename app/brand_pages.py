@@ -492,6 +492,13 @@ _DASHBOARD_STYLES = """
   }
   .dash-btn-ghost:hover { background: #f7f6f3; color: var(--ink); }
   .dash-main { padding: clamp(12px, 3vw, 20px); flex: 1; }
+  .dash-main[hidden],
+  .dash-auth-wrap[hidden] {
+    display: none !important;
+  }
+  .dash-shell.dash-authed .dash-auth-wrap {
+    display: none !important;
+  }
   .dash-view { display: none; }
   .dash-view.active { display: block; }
   .dash-auth-wrap {
