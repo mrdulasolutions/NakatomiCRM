@@ -10,6 +10,7 @@ from app.db import get_db
 from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
 from app.models import EntityType, TimelineEvent
 from app.schemas import Page, TimelineEventOut
+from app.services.timeline_present import enrich_timeline_events
 
 router = APIRouter(
     prefix="/timeline",
@@ -18,7 +19,7 @@ router = APIRouter(
 )
 
 
-def _paginate(db: Session, query, page: Pagination):
+def _paginate(db: Session, workspace_id: str, query, page: Pagination):
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     # Timeline uses integer id + occurred_at; order newest first.
     q = query.order_by(TimelineEvent.occurred_at.desc(), TimelineEvent.id.desc())
@@ -35,8 +36,9 @@ def _paginate(db: Session, query, page: Pagination):
     if len(rows) > page.limit:
         next_cursor = str(rows[page.limit - 1].id)
         rows = rows[: page.limit]
+    enriched = enrich_timeline_events(db, workspace_id, rows)
     return Page[TimelineEventOut](
-        items=[TimelineEventOut.model_validate(r) for r in rows],
+        items=[TimelineEventOut.model_validate(e) for e in enriched],
         next_cursor=next_cursor,
         count=total,
     )
@@ -58,7 +60,7 @@ def workspace_timeline(
         query = query.where(TimelineEvent.occurred_at >= since)
     if until:
         query = query.where(TimelineEvent.occurred_at <= until)
-    return _paginate(db, query, page)
+    return _paginate(db, p.workspace.id, query, page)
 
 
 @router.get("/{entity_type}/{entity_id}", response_model=Page[TimelineEventOut])
@@ -74,4 +76,4 @@ def entity_timeline(
         TimelineEvent.entity_type == entity_type,
         TimelineEvent.entity_id == entity_id,
     )
-    return _paginate(db, query, page)
+    return _paginate(db, p.workspace.id, query, page)

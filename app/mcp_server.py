@@ -866,32 +866,32 @@ def relate(
 
 
 @mcp.tool()
-def timeline(ctx: Context, entity_type: str, entity_id: str, limit: int = 50) -> list[dict]:
-    """Return the most recent events for one entity."""
+def timeline(
+    ctx: Context,
+    entity_type: str,
+    entity_id: str,
+    limit: int = 50,
+    since: str | None = None,
+) -> list[dict]:
+    """Return the most recent events for one entity (includes actor_label)."""
+    from datetime import datetime
+
+    from app.services.timeline_present import enrich_timeline_events
+
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "timeline:read")
+        q = select(TimelineEvent).where(
+            TimelineEvent.workspace_id == p.workspace.id,
+            TimelineEvent.entity_type == EntityType(entity_type),
+            TimelineEvent.entity_id == entity_id,
+        )
+        if since:
+            q = q.where(TimelineEvent.occurred_at >= datetime.fromisoformat(since.replace("Z", "+00:00")))
         rows = db.scalars(
-            select(TimelineEvent)
-            .where(
-                TimelineEvent.workspace_id == p.workspace.id,
-                TimelineEvent.entity_type == EntityType(entity_type),
-                TimelineEvent.entity_id == entity_id,
-            )
-            .order_by(TimelineEvent.occurred_at.desc(), TimelineEvent.id.desc())
-            .limit(min(limit, 500))
+            q.order_by(TimelineEvent.occurred_at.desc(), TimelineEvent.id.desc()).limit(min(limit, 500))
         ).all()
-        return [
-            {
-                "id": r.id,
-                "event_type": r.event_type,
-                "occurred_at": r.occurred_at.isoformat(),
-                "actor_user_id": r.actor_user_id,
-                "actor_api_key_id": r.actor_api_key_id,
-                "payload": r.payload,
-            }
-            for r in rows
-        ]
+        return enrich_timeline_events(db, p.workspace.id, rows)
     finally:
         db.close()
 
@@ -1752,6 +1752,106 @@ def morning_briefing(ctx: Context, stale_days: int = 14) -> dict:
                 for e in recent
             ],
         }
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def entity_context(
+    ctx: Context,
+    entity_type: str,
+    entity_ref: str,
+    timeline_limit: int = 40,
+) -> dict:
+    """Coherent business-state bundle for one entity (company, contact, deal, lead).
+
+    Pass UUID or human ref (company name/domain, contact email, deal name).
+    Scopes: timeline:read plus each resource section (companies:read, contacts:read, …).
+    """
+    from app.services.entity_context import build_entity_context
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "timeline:read")
+        return build_entity_context(
+            db, p.workspace.id, entity_type, entity_ref, scopes=p.scopes, timeline_limit=timeline_limit
+        )
+    except ValueError as e:
+        raise RuntimeError(str(e)) from e
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def agent_activity(
+    ctx: Context,
+    since: str,
+    until: str | None = None,
+    agent_api_key_id: str | None = None,
+    entity_type: str | None = None,
+    event_type_prefix: str | None = None,
+) -> dict:
+    """Workforce facts aggregated from timeline since ``since`` (ISO). Not orchestration analytics."""
+    from app.services.agent_activity import build_agent_activity
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "timeline:read")
+        since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        until_dt = (
+            datetime.fromisoformat(until.replace("Z", "+00:00")) if until else None
+        )
+        return build_agent_activity(
+            db,
+            p.workspace.id,
+            since=since_dt,
+            until=until_dt,
+            agent_api_key_id=agent_api_key_id,
+            entity_type=entity_type,
+            event_type_prefix=event_type_prefix,
+        )
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_agents(ctx: Context) -> dict:
+    """List workspace agent identities (API keys with agent roster conventions). Scope: workspace:read."""
+    from app.services.agent_activity import list_workspace_agents
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "workspace:read")
+        return {"agents": list_workspace_agents(db, p.workspace.id)}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def explain_change(
+    ctx: Context,
+    entity_type: str,
+    entity_id: str,
+    event_id: int | None = None,
+    since: str | None = None,
+    limit: int = 20,
+) -> dict:
+    """Evidence chain: timeline with actor_label plus audit log entries for an entity."""
+    from app.services.explain_change import explain_change as _explain
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "timeline:read")
+        since_dt = datetime.fromisoformat(since.replace("Z", "+00:00")) if since else None
+        return _explain(
+            db,
+            p.workspace.id,
+            entity_type,
+            entity_id,
+            event_id=event_id,
+            since=since_dt,
+            limit=limit,
+        )
     finally:
         db.close()
 

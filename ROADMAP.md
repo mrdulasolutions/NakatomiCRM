@@ -3,13 +3,16 @@
 > **See also:** [AgentLab.md](./AgentLab.md) — recipes for real-world agent
 > deployments. This file is *what we build*; AgentLab is *how you'd use it*.
 >
+> **Agent workforce:** [docs/AGENT-OS.md](./docs/AGENT-OS.md) — business-state
+> layer for autonomous workforces (P5 product + P6 interoperability).
+>
 > **Ethos:** [ETHOS.md](./ETHOS.md) — agents are the primary user; spine not
 > soul; small stable tool surface; user owns data.
 >
 > **Lane:** Agent spine (self-hostable structured truth for multi-agent GTM),
 > not an Attio/HubSpot clone and not a rich product UI.
 
-This roadmap is ranked by a **P-system** (P0 → P4). Within each priority,
+This roadmap is ranked by a **P-system** (P0 → P6). Within each priority,
 items are ordered by impact. Status: `[ ]` todo · `[~]` in progress · `[x]` shipped.
 
 ---
@@ -43,8 +46,8 @@ operable by tools, by peer agents, and by long-running multi-agent workflows.
 | Layer | Standard | Role in Nakatomi | Status today |
 | --- | --- | --- | --- |
 | **MCP** | Anthropic Model Context Protocol | Agents call CRM *tools* (`create_contact`, `forecast`, …) over streamable HTTP at `/mcp` | Shipped (curated tools + OAuth 2.1) |
-| **A2A** | Google Agent2Agent (Linux Foundation) | Peer agents *discover* Nakatomi, *delegate tasks*, stream status, return *artifacts* | Partial — static `/.well-known/agent.json` only |
-| **ACP** | Agent Context Protocol (Nakatomi product layer) + Agent Communication Protocol (BeeAI/IBM → converging into A2A) | **Context:** ship a machine-readable session pack (schema, views, policies, open work). **Communication:** long-running multi-agent handoffs where A2A tasks map onto CRM tasks/timeline | Not started as a product surface |
+| **A2A** | Google Agent2Agent (Linux Foundation) | Peer agents *discover* Nakatomi, *delegate tasks*, stream status, return *artifacts* | Shipped — dynamic agent card + `/a2a/tasks` runtime ([docs/A2A.md](./docs/A2A.md)); stretch: File artifacts, outbound A2A client |
+| **ACP** | Agent Context Protocol (Nakatomi product layer) + Agent Communication Protocol (BeeAI/IBM → converging into A2A) | **Context:** ship a machine-readable session pack (schema, views, policies, open work). **Communication:** long-running multi-agent handoffs where A2A tasks map onto CRM tasks/timeline | Shipped — `/acp/context`, ETag, MCP `load_context`; stretch: signed context tokens |
 | **REST** | OpenAPI 3 | Humans, scripts, non-MCP clients; always parity target with MCP | Shipped |
 
 ### Why all four (not “just MCP”)
@@ -73,8 +76,12 @@ operable by tools, by peer agents, and by long-running multi-agent workflows.
 | [**P2**](#p2--crm-spine-completeness) | CRM spine completeness | Real B2B funnels without inventing objects |
 | [**P3**](#p3--agent-operations--ergonomics) | Agent ops & ergonomics | Swarms, hygiene, forensics, bulk work |
 | [**P4**](#p4--ecosystem-adoption--later) | Ecosystem, adoption, later | Importers, verticals, optional depth |
+| [**P5**](#p5--agent-operating-system) | Agent operating system | `entity_context`, attribution, handoffs — **data plane product** |
+| [**P6**](#p6--workforce--orchestration-interoperability) | Workforce & orchestration interoperability | Composable with Paperclip (reference) and other controllers — **not** a Paperclip dependency |
 
-**Suggested sequencing:** P0 → P1 core A2A/ACP → P2 leads/views → P3 compounds → P4 importers.
+**Suggested sequencing:** P0 → P1 protocols → P2 spine → P3 ops → **P5 compounds (product)** → P6 docs/demos → P4 importers as needed.
+
+**Agent workforce guardrail:** Nakatomi records *what changed in the business* and *who did it* — not *how an agent received its assignment*. See [docs/AGENT-OS.md](./docs/AGENT-OS.md).
 
 **90-day slice (recommended):**
 
@@ -418,6 +425,84 @@ We will **not** build:
 
 ---
 
+## P5 — Agent operating system
+
+> **Goal:** Nakatomi is the **business-state layer for autonomous workforces** — compounds that any runtime can call without knowing your orchestrator. **P5 is the durable product; P6 is how external controllers compose with it.**
+
+Full thesis: [docs/AGENT-OS.md](./docs/AGENT-OS.md).
+
+### P5.1 — `entity_context` (MCP + REST)
+
+- [x] Compound: `entity_context(entity_type, entity_id_or_slug)` — coherent bundle (entity, related records, graph slice, timeline window, open tasks, pending approvals)
+- [x] Bounded payload + versioning; document in [MCP_PARITY.md](./docs/MCP_PARITY.md)
+- [x] Implementation: `app/services/entity_context.py`, `GET /agent/entity-context`, MCP `entity_context`
+
+### P5.2 — Timeline `actor_label`
+
+- [x] Resolve `actor_api_key_id` → human-readable label (Agent Identity display name)
+- [x] Optional `since` on workspace timeline + MCP `timeline`
+- [x] Timeline reads include **actor_label**
+
+### P5.3 — Agent Identity model
+
+- [x] Roster conventions on `ApiKey.name` + `data` (`agent_role`, `external_identities`) — [AGENT-WORKFORCE-KEYS.md](./docs/AGENT-WORKFORCE-KEYS.md)
+- [x] `GET /agent/agents` + MCP `list_agents`
+- [x] External ids documented; Paperclip/Hermes as map entries
+
+### P5.4 — Handoff primitive
+
+- [x] Handoff JSON + `POST /agent/handoff` returns `entity_context` snapshot
+- [ ] AgentLab recipe update (takeover ritual)
+
+### P5.5 — `explain_change`
+
+- [x] Compound: timeline + audit + approval pointers — `GET /agent/explain-change`, MCP `explain_change`
+
+### P5.6 — `agent_activity`
+
+- [x] Structured aggregates: `GET /agent/activity`, MCP `agent_activity`
+- [x] **Non-goal:** workforce analytics dashboard — facts only
+
+### P5.7 — Takeover demo
+
+- [ ] Script in AgentLab or 5-MINUTE-AGENT extension: multi-agent run → stop → new session → `entity_context` continuity
+- [ ] Optional: recorded Paperclip reference demo ([P6.4](#p64--workforce-interoperability-demo))
+
+### P5 status: **CORE SHIPPED** (P5.7 demo scripts open)
+
+---
+
+## P6 — Workforce & orchestration interoperability
+
+> **Goal:** Make Nakatomi **composable with agent workforce controllers** — Paperclip is the **first reference example**, not a code dependency or target platform.
+
+### P6.1 — Paperclip integration guide (reference)
+
+- [x] [docs/integrations/PAPERCLIP.md](./docs/integrations/PAPERCLIP.md) — per-agent MCP, scope matrix, Tool Gateway topology, flagship demo script
+
+### P6.2 — Per-agent identity / key playbook
+
+- [x] Scope templates by role — [docs/AGENT-WORKFORCE-KEYS.md](./docs/AGENT-WORKFORCE-KEYS.md)
+- [x] Cross-link from PAPERCLIP guide and AGENT-OS
+
+### P6.3 — Generic external-agent identity metadata
+
+- [x] Spec aligned with P5.3 (`external_identities` on `ApiKey.data`)
+- [x] Paperclip agent id as one map key among many
+
+### P6.4 — Workforce interoperability demo
+
+- [ ] Scripted or recorded: CEO → Research / SDR / AE → Nakatomi snapshot + attributed timeline → takeover via `entity_context`
+
+### P6.5 — Other orchestrator examples
+
+- [ ] Short stubs: no orchestrator (solo agent), custom cron, OpenGateway — same key-per-worker contract
+- [ ] No Nakatomi coupling to assignment source
+
+### P6 status: **DOCS STARTED** (P6.1 shipped); playbook + demos open
+
+---
+
 ## Priority decision matrix
 
 When a new idea arrives, score it:
@@ -443,6 +528,7 @@ When a new idea arrives, score it:
 | **v0.7 — Ops** | **Shipped** — jobs; dead letters; time-travel; policies |
 | **v0.8 — Ecosystem** | **Shipped** — multi-CRM import; custom objects |
 | **v1.0 — Production** | **Shipped** — optional OTel; optional SSO; CLI; protocol SLA; docs freeze; SECRET_KEY prod guard |
+| **v1.1+ — Agent OS** | P5 compounds shipped (`entity_context`, actor labels, `agent_activity`); P6 playbook + demo |
 
 SemVer: breaking MCP/A2A/ACP contract changes require major bump + sunset window announced in `/schema` and CHANGELOG.
 
@@ -462,6 +548,7 @@ SemVer: breaking MCP/A2A/ACP contract changes require major bump + sunset window
 
 | Date | Change |
 | --- | --- |
+| 2026-09-25 | **P5 Agent OS + P6 workforce interoperability** — [docs/AGENT-OS.md](./docs/AGENT-OS.md), [docs/integrations/PAPERCLIP.md](./docs/integrations/PAPERCLIP.md); fixed A2A/ACP status in protocol table. |
 | 2026-08-07 | **v1.0 shipped** — protocol SLA, optional OTel + SSO, operator CLI, docs freeze. |
 | 2026-08-06 | Rebuilt as P0–P4 roadmap from competitive/agent research; added full **MCP + A2A + ACP** protocol stack; preserved shipped foundation; defined v0.4–v1.0 milestones. |
 

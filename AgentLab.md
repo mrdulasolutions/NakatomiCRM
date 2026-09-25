@@ -14,6 +14,7 @@
   - [Research agent](#3-research-agent)
   - [Morning briefing agent](#4-morning-briefing-agent)
 - [Team & swarm patterns](#team--swarm-patterns)
+  - [Agent workforce (orchestrator optional)](#agent-workforce-orchestrator-optional)
   - [Outbound campaign machine](#5-outbound-campaign-machine)
   - [End-to-end deal orchestration](#6-end-to-end-deal-orchestration)
   - [Inbound triage + routing swarm](#7-inbound-triage--routing-swarm)
@@ -180,6 +181,25 @@ leads overnight, AE agent moved 3 deals forward."* Transparent, auditable.
 ---
 
 ## Team & swarm patterns
+
+### Agent workforce (orchestrator optional)
+
+**Goal:** multiple autonomous agents (Research, SDR, AE, …) share one Nakatomi workspace. An orchestrator (Paperclip is the reference example) decides *who works*; Nakatomi records *what happened to the business*.
+
+**Contract:**
+
+1. **One API key per worker** — scoped least-privilege; never one shared `nk_…` for the whole team.
+2. **Nakatomi does not store assignment source** — no “CEO told me to” in core schema; timeline + entities only.
+3. **Boot:** `load_context` or `describe_schema` → work → log touches on the timeline.
+4. **Takeover (P5):** new agent session → `entity_context(company, Acme)` — no chat history required.
+
+**References:**
+
+- Strategy + pillars: [docs/AGENT-OS.md](./docs/AGENT-OS.md)
+- Paperclip reference setup: [docs/integrations/PAPERCLIP.md](./docs/integrations/PAPERCLIP.md)
+- Solo path first: [docs/5-MINUTE-AGENT.md](./docs/5-MINUTE-AGENT.md)
+
+**Anti-pattern:** one admin key for every Paperclip agent — you lose attribution and blast radius explodes.
 
 ### 5. Outbound campaign machine
 

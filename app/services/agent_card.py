@@ -129,7 +129,9 @@ def build_agent_card(*, base_url: str, extended: bool = False) -> dict[str, Any]
         card["nakatomi"]["extended"] = True
         card["nakatomi"]["mcp_tools_hint"] = [
             "load_context",
+            "entity_context",
             "morning_briefing",
+            "agent_activity",
             "upsert_account_map",
             "advance_deal",
             "log_interaction",

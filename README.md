@@ -19,6 +19,8 @@ Your agents operate it.
 
 **→ [Run Nakatomi in 5 minutes](./docs/5-MINUTE-AGENT.md)** — workspace, MCP, one agent workflow, REST verify.
 
+**→ [Agent OS](./docs/AGENT-OS.md)** — business-state layer for autonomous workforces (orchestrator optional).
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CI](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml/badge.svg)](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml)
@@ -576,6 +578,8 @@ Optional local audit UI: set `DASHBOARD_ENABLED=true` and open `/dashboard` (aut
 | Document | What it covers |
 | --- | --- |
 | [**Nakatomi in 5 minutes**](./docs/5-MINUTE-AGENT.md) | Zero → first agent CRM operation |
+| [**Agent OS**](./docs/AGENT-OS.md) | Business-state layer for autonomous workforces (P5/P6) |
+| [Paperclip reference](./docs/integrations/PAPERCLIP.md) | Workforce interoperability (orchestrator example) |
 | [Architecture](./docs/ARCHITECTURE.md) | System architecture and data flows |
 | [MCP](./docs/MCP.md) | MCP setup and tool reference |
 | [AgentLab](./AgentLab.md) | Agent deployment patterns and recipes |

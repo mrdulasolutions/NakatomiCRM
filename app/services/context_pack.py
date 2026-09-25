@@ -239,7 +239,11 @@ def build_context_pack(
             "url": "/mcp",
             "tools": [
                 "load_context",
+                "entity_context",
                 "morning_briefing",
+                "agent_activity",
+                "list_agents",
+                "explain_change",
                 "upsert_account_map",
                 "advance_deal",
                 "log_interaction",
@@ -273,7 +277,8 @@ def build_context_pack(
             "Soft-delete by default; hard delete needs resource:delete scope",
             "Send Idempotency-Key on writes (or idempotency_key on MCP mutators)",
             "email:send and admin:keys are not in member defaults — use propose_action for HITL",
-            "Use morning_briefing for open work; use advance_deal / upsert_account_map compound tools",
+            "Use morning_briefing for open work; use entity_context for account takeover",
+            "Use advance_deal / upsert_account_map compound tools for multi-step writes",
         ]
 
     # Hash without volatile timestamps so ETag revalidation works within a session.

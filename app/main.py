@@ -18,6 +18,7 @@ from app.routers import (
     acp,
     activities,
     approvals,
+    agent_os,
     auth,
     calendar,
     companies,
@@ -435,6 +436,7 @@ app.include_router(workspaces.router)
 app.include_router(approvals.router)
 app.include_router(a2a.router)
 app.include_router(acp.router)
+app.include_router(agent_os.router)
 app.include_router(discovery.router)
 app.include_router(contacts.router)
 app.include_router(companies.router)

@@ -20,6 +20,11 @@ surface — not 1:1 with every route.
 | Relationships | `/relationships/*` | `relate` | |
 | Timeline | `/timeline/*` | `timeline` | |
 | Open work | compose | **`morning_briefing`** | compound |
+| Entity state | **`GET /agent/entity-context`** | **`entity_context`** | timeline + per-section resource reads |
+| Workforce facts | **`GET /agent/activity`** | **`agent_activity`** | timeline aggregates |
+| Agent roster | **`GET /agent/agents`** | **`list_agents`** | API key identities |
+| Explain change | **`GET /agent/explain-change`** | **`explain_change`** | audit + timeline |
+| Handoff | **`POST /agent/handoff`** | (compose) | returns entity_context |
 | Memory | `/memory/*` | `memory_*` | |
 | Ingest | `POST /ingest` | `ingest` | |
 | Email | `/email/*` | `send_email` | needs `email:send` |
@@ -37,7 +42,11 @@ surface — not 1:1 with every route.
 | Tool | Scopes | Does |
 | --- | --- | --- |
 | `load_context` | auth | ACP pack |
+| `entity_context` | timeline:read + resource reads per section | Entity business-state bundle (P5) |
 | `morning_briefing` | tasks/deals/approvals read | Open work |
+| `agent_activity` | timeline:read | Workforce facts from timeline |
+| `list_agents` | workspace:read | Agent identity roster |
+| `explain_change` | timeline:read | Evidence chain |
 | `upsert_account_map` | companies+contacts+relationships write | Company + contacts + edges |
 | `advance_deal` | deals write (+ activity/task) | Stage + optional activity/task |
 | `log_interaction` | activities write (+ notes) | Activity + optional note |

@@ -143,8 +143,24 @@ Production checklist: [DEPLOY.md](./DEPLOY.md). Operator sanity: `python -m app 
 
 ---
 
+## 7. Cold takeover (P5)
+
+After any agent has worked an account, a **new** session can continue without chat history:
+
+```text
+GET /agent/entity-context?entity_type=company&entity_ref=Acme%20Corp
+```
+
+Or MCP: `entity_context("company", "Acme Corp")`.
+
+Mint **separate keys per role** — see [AGENT-WORKFORCE-KEYS.md](./AGENT-WORKFORCE-KEYS.md).
+
+---
+
 ## After the five minutes
 
+- **Business-state layer for agent workforces:** [AGENT-OS.md](./AGENT-OS.md) (P5 roadmap: `entity_context`, attribution, handoffs)
+- **Orchestrated workforce (Paperclip reference):** [integrations/PAPERCLIP.md](./integrations/PAPERCLIP.md)
 - **Patterns for real GTM agents:** [AgentLab.md](../AgentLab.md)
 - **Tool reference:** [MCP.md](./MCP.md)
 - **Memory connectors (optional):** [MEMORY.md](./MEMORY.md)

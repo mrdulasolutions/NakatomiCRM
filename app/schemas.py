@@ -559,6 +559,7 @@ class TimelineEventOut(ORMBase):
     occurred_at: datetime
     actor_user_id: str | None
     actor_api_key_id: str | None
+    actor_label: str | None = None
     payload: dict
 
 
