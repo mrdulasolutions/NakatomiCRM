@@ -6,7 +6,7 @@ fastapi==0.115.5
 uvicorn[standard]==0.32.1
 
 # DB + migrations (Postgres-only; JSONB / pg_trgm required)
-sqlalchemy==2.0.36
+sqlalchemy==2.0.54
 psycopg[binary]==3.2.13   # 3.2.3 vanished from PyPI; binary wheels for 3.12
 alembic==1.14.0
 
