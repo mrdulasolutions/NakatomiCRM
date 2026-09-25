@@ -12,11 +12,17 @@ You will:
 
 No marketing copy—just the loop that proves the thesis.
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/nakatomicrm)
+
+Prefer one-click? Deploy above (~60–90s), set `PUBLIC_BASE_URL` to your Railway HTTPS origin, then use that URL everywhere this doc says `localhost:8000`. Template details: [RAILWAY_TEMPLATE.md](./RAILWAY_TEMPLATE.md).
+
 ---
 
 ## 1. Start Nakatomi
 
-**Docker (fastest on a fresh machine):**
+**Railway (fastest if you do not want local Docker):** use the button at the top of this page, wait for `/health`, then continue at step 2 with your `*.up.railway.app` URL.
+
+**Docker (local):**
 
 ```bash
 git clone https://github.com/mrdulasolutions/NakatomiCRM.git
