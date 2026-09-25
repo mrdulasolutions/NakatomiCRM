@@ -11,172 +11,114 @@ expects a workspace API key in a cookie named ``nk_dashboard_key``.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from app.brand_pages import dashboard_stylesheet, render_dashboard_disabled
 from app.config import settings
 
 router = APIRouter(tags=["dashboard"])
 
 
-_DASHBOARD_HTML = """<!doctype html>
+_DASHBOARD_HTML = (
+    """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Nakatomi · dashboard</title>
+  <title>Audit dashboard · Nakatomi</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
   <style>
-    :root { color-scheme: dark; }
-    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; background: #0b0d10; color: #e6e8ea; }
-    header { padding: 14px 20px; border-bottom: 1px solid #20242a; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-    header h1 { margin: 0; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #6cf; }
-    header span { opacity: 0.6; font-size: 12px; }
-    nav { display: flex; gap: 4px; }
-    nav button { font: inherit; padding: 4px 12px; font-size: 11px; background: transparent; color: #9ab; border: 1px solid #20242a; border-radius: 6px; cursor: pointer; }
-    nav button.active { background: #11151a; color: #6cf; border-color: #2d3540; }
-    main { padding: 16px; }
-    .view { display: none; }
-    .view.active { display: block; }
-
-    /* audit grid */
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    section { background: #11151a; border: 1px solid #20242a; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; max-height: 80vh; }
-    section h2 { margin: 0; padding: 10px 14px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; background: #161b21; border-bottom: 1px solid #20242a; color: #9ab; }
-    section .body { padding: 8px 14px; overflow: auto; font-size: 12px; line-height: 1.55; }
-    .row { padding: 6px 0; border-bottom: 1px dashed #20242a; }
-    .row:last-child { border-bottom: none; }
-    .row .k { color: #6cf; }
-    .row .t { color: #7a8590; font-size: 11px; }
-
-    /* kanban */
-    .pipe-label { padding: 8px 4px; color: #9ab; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
-    .kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 8px; }
-    .col { background: #11151a; border: 1px solid #20242a; border-radius: 8px; display: flex; flex-direction: column; max-height: 75vh; }
-    .col h3 { margin: 0; padding: 10px 14px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #9ab; background: #161b21; border-bottom: 1px solid #20242a; display: flex; justify-content: space-between; }
-    .col h3 .won { color: #7ee787; }
-    .col h3 .lost { color: #ff8b8b; }
-    .col h3 .count { color: #6cf; font-weight: normal; }
-    .col .stack { padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-    .card { background: #0e1216; border: 1px solid #20242a; border-radius: 6px; padding: 10px; font-size: 12px; }
-    .card .name { color: #e6e8ea; font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
-    .card .meta { color: #9ab; font-size: 11px; }
-    .card .amt { color: #7ee787; font-size: 11px; }
-    .col-total { color: #6cf; font-size: 11px; }
-
-    /* webhooks view */
-    .wh-item { background: #11151a; border: 1px solid #20242a; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
-    .wh-head { padding: 10px 14px; cursor: pointer; display: flex; gap: 12px; align-items: center; }
-    .wh-head:hover { background: #161b21; }
-    .wh-name { color: #6cf; font-size: 13px; font-weight: 600; }
-    .wh-url { color: #9ab; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .wh-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; border: 1px solid #20242a; color: #9ab; letter-spacing: 0.5px; text-transform: uppercase; }
-    .wh-badge.fail { color: #ff8b8b; border-color: #4a2830; }
-    .wh-badge.ok   { color: #7ee787; border-color: #224432; }
-    .wh-badge.off  { color: #7a8590; border-color: #2a313a; }
-    .wh-body { border-top: 1px solid #20242a; padding: 10px 14px; background: #0e1216; }
-    .wh-delivery { padding: 8px 0; border-bottom: 1px dashed #20242a; font-size: 11px; line-height: 1.5; }
-    .wh-delivery:last-child { border-bottom: none; }
-    .wh-delivery .status { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; margin-right: 6px; }
-    .wh-delivery .status.succeeded { background: #122a1a; color: #7ee787; }
-    .wh-delivery .status.dead      { background: #2a1212; color: #ff8b8b; }
-    .wh-delivery .status.pending   { background: #1a1a2a; color: #c8a8ff; }
-    .wh-delivery .event { color: #6cf; }
-    .wh-delivery .meta { color: #7a8590; }
-    .wh-delivery pre { margin: 4px 0 0 0; padding: 6px 8px; background: #0b0d10; border: 1px solid #20242a; border-radius: 4px; font-size: 10px; color: #e6e8ea; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
-
-    /* memory view */
-    .mem-link { background: #11151a; border: 1px solid #20242a; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; font-size: 12px; display: grid; grid-template-columns: auto auto 1fr auto; gap: 12px; align-items: center; }
-    .mem-link .pill { padding: 2px 8px; border-radius: 10px; border: 1px solid #20242a; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
-    .mem-link .pill.connector { color: #c8a8ff; border-color: #3a2a55; }
-    .mem-link .pill.entity    { color: #7ee787; border-color: #224432; }
-    .mem-link .ref { color: #9ab; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mem-link .ref .mono { color: #e6e8ea; }
-    .mem-link .t { color: #7a8590; font-size: 10px; }
-    .mem-link .note { grid-column: 1 / -1; color: #9ab; font-size: 11px; padding-top: 4px; border-top: 1px dashed #20242a; margin-top: 6px; }
-    .mem-load-more { display: block; width: 100%; padding: 8px; margin-top: 8px; background: transparent; color: #6cf; border: 1px dashed #20242a; border-radius: 6px; cursor: pointer; font: inherit; font-size: 11px; }
-
-    /* auth */
-    .auth { padding: 18px; max-width: 420px; margin: 64px auto; background: #11151a; border: 1px solid #20242a; border-radius: 8px; }
-    input, button#save { font: inherit; padding: 8px 10px; background: #0b0d10; color: #e6e8ea; border: 1px solid #20242a; border-radius: 6px; width: 100%; margin-top: 8px; box-sizing: border-box; }
-    button#save { cursor: pointer; }
-    .empty { opacity: 0.5; padding: 12px 0; }
+"""
+    + dashboard_stylesheet()
+    + """
   </style>
 </head>
-<body>
-<header>
-  <h1>Nakatomi</h1>
-  <span id="ws"></span>
-  <nav>
-    <button data-view="audit" class="active">Audit</button>
-    <button data-view="kanban">Kanban</button>
-    <button data-view="webhooks">Webhooks</button>
-    <button data-view="memory">Memory</button>
+<body class="dash-app">
+<div class="dash-shell">
+<header class="dash-header">
+  <div class="dash-brand">
+    <p class="mark">Nakatomi CRM</p>
+    <h1 class="dash-title">Audit dashboard</h1>
+  </div>
+  <span id="ws" class="dash-meta"></span>
+  <nav class="dash-nav">
+    <button type="button" data-view="audit" class="active">Audit</button>
+    <button type="button" data-view="kanban">Kanban</button>
+    <button type="button" data-view="webhooks">Webhooks</button>
+    <button type="button" data-view="memory">Memory</button>
   </nav>
   <span style="flex:1"></span>
-  <button id="logout" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">logout</button>
+  <button type="button" id="logout" class="dash-btn-ghost">Sign out</button>
 </header>
 
-<div id="auth" class="auth" hidden>
-  <h2 style="margin:0 0 12px 0">enter your API key</h2>
-  <input id="key" type="password" placeholder="nk_..." autocomplete="off" />
-  <button id="save">use key</button>
-  <p style="opacity:.6;font-size:12px">Stored in a cookie so you don't have to paste it every time. Clear with logout.</p>
+<div id="auth-wrap" class="dash-auth-wrap" hidden>
+  <div id="auth" class="dash-auth">
+    <p class="mark">Nakatomi CRM</p>
+    <h2>Connect your API key</h2>
+    <p class="lede">Read-only view of timeline, pipelines, webhooks, and memory links. Paste a workspace key with list scopes.</p>
+    <label for="key">API key</label>
+    <input id="key" type="password" placeholder="nk_..." autocomplete="off" />
+    <button type="button" id="save">Use key</button>
+    <p class="foot">Stored in a cookie on this path only. Sign out clears it.</p>
+  </div>
 </div>
 
-<main id="app" hidden>
-  <div id="view-audit" class="view active">
-    <div class="grid">
-      <section><h2>timeline</h2><div class="body" id="timeline"></div></section>
-      <section><h2>recent contacts</h2><div class="body" id="contacts"></div></section>
-      <section><h2>recent companies</h2><div class="body" id="companies"></div></section>
-      <section><h2>deals</h2><div class="body" id="deals"></div></section>
-      <section><h2>open tasks</h2><div class="body" id="tasks"></div></section>
-      <section><h2>webhook deliveries</h2><div class="body" id="webhooks"></div></section>
+<main id="app" class="dash-main" hidden>
+  <div id="view-audit" class="dash-view active">
+    <div class="dash-grid">
+      <section class="dash-section"><h2>Timeline</h2><div class="body" id="timeline"></div></section>
+      <section class="dash-section"><h2>Recent contacts</h2><div class="body" id="contacts"></div></section>
+      <section class="dash-section"><h2>Recent companies</h2><div class="body" id="companies"></div></section>
+      <section class="dash-section"><h2>Deals</h2><div class="body" id="deals"></div></section>
+      <section class="dash-section"><h2>Open tasks</h2><div class="body" id="tasks"></div></section>
+      <section class="dash-section"><h2>Webhook deliveries</h2><div class="body" id="webhooks"></div></section>
     </div>
   </div>
-  <div id="view-kanban" class="view">
-    <div id="pipe-label" class="pipe-label">pipeline:</div>
+  <div id="view-kanban" class="dash-view">
+    <div id="pipe-label" class="pipe-label">Pipeline</div>
     <div class="kanban" id="kanban"></div>
   </div>
-  <div id="view-webhooks" class="view">
-    <div id="wh-controls" style="padding:8px 4px;color:#9ab;font-size:11px;display:flex;gap:12px;align-items:center">
-      <span>status filter:</span>
-      <select id="wh-filter" style="padding:4px 8px;background:#0b0d10;color:#e6e8ea;border:1px solid #20242a;border-radius:6px;font:inherit">
-        <option value="">all</option>
-        <option value="pending">pending</option>
-        <option value="succeeded">succeeded</option>
-        <option value="dead">dead</option>
+  <div id="view-webhooks" class="dash-view">
+    <div id="wh-controls" class="dash-toolbar">
+      <span>Status filter</span>
+      <select id="wh-filter" class="dash-select">
+        <option value="">All</option>
+        <option value="pending">Pending</option>
+        <option value="succeeded">Succeeded</option>
+        <option value="dead">Dead</option>
       </select>
       <span style="flex:1"></span>
-      <button id="wh-refresh" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">refresh</button>
+      <button type="button" id="wh-refresh" class="dash-btn-ghost">Refresh</button>
     </div>
     <div id="wh-root"></div>
   </div>
-  <div id="view-memory" class="view">
-    <div style="padding:8px 4px;color:#9ab;font-size:11px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <span>connectors:</span>
-      <span id="mem-connectors" style="color:#6cf">—</span>
+  <div id="view-memory" class="dash-view">
+    <div class="dash-toolbar">
+      <span>Connectors</span>
+      <span id="mem-connectors" class="accent">—</span>
       <span style="flex:1"></span>
-      <span>filter:</span>
-      <select id="mem-connector-filter" style="padding:4px 8px;background:#0b0d10;color:#e6e8ea;border:1px solid #20242a;border-radius:6px;font:inherit">
-        <option value="">all connectors</option>
+      <span>Filter</span>
+      <select id="mem-connector-filter" class="dash-select">
+        <option value="">All connectors</option>
       </select>
-      <select id="mem-entity-filter" style="padding:4px 8px;background:#0b0d10;color:#e6e8ea;border:1px solid #20242a;border-radius:6px;font:inherit">
-        <option value="">all entities</option>
-        <option value="contact">contact</option>
-        <option value="company">company</option>
-        <option value="deal">deal</option>
-        <option value="activity">activity</option>
-        <option value="note">note</option>
-        <option value="task">task</option>
-        <option value="file">file</option>
+      <select id="mem-entity-filter" class="dash-select">
+        <option value="">All entities</option>
+        <option value="contact">Contact</option>
+        <option value="company">Company</option>
+        <option value="deal">Deal</option>
+        <option value="activity">Activity</option>
+        <option value="note">Note</option>
+        <option value="task">Task</option>
+        <option value="file">File</option>
       </select>
-      <button id="mem-refresh" style="padding:4px 10px;font-size:11px;background:transparent;color:#9ab;border:1px solid #20242a;border-radius:6px;cursor:pointer">refresh</button>
+      <button type="button" id="mem-refresh" class="dash-btn-ghost">Refresh</button>
     </div>
-    <div id="mem-total" style="padding:4px;color:#6cf;font-size:11px"></div>
+    <div id="mem-total" class="mem-total"></div>
     <div id="mem-root"></div>
   </div>
 </main>
+</div>
 
 <script>
 const COOKIE = "nk_dashboard_key";
@@ -196,11 +138,11 @@ async function api(path) {
   return r.json();
 }
 function row(key, text, time) {
-  const d = document.createElement("div"); d.className = "row";
+  const d = document.createElement("div"); d.className = "dash-row";
   d.innerHTML = `<span class="k">${key}</span> ${text} ${time ? `<div class="t">${time}</div>` : ""}`;
   return d;
 }
-function empty() { const d = document.createElement("div"); d.className = "empty"; d.textContent = "— nothing yet —"; return d; }
+function empty() { const d = document.createElement("div"); d.className = "dash-empty"; d.textContent = "— nothing yet —"; return d; }
 
 function fmtMoney(amt, cur) {
   if (amt == null) return "";
@@ -326,7 +268,7 @@ async function loadWebhooks() {
       <div class="wh-name">${esc(hook.name)}</div>
       <div class="wh-url">${esc(hook.url)}</div>
       <span class="wh-badge ${badgeClass}">${badgeText}</span>
-      <span class="meta" style="color:#7a8590;font-size:11px">${hook.last_delivery_at ? "last: " + new Date(hook.last_delivery_at).toLocaleString() : "never fired"}</span>
+      <span class="meta">${hook.last_delivery_at ? "Last: " + new Date(hook.last_delivery_at).toLocaleString() : "Never fired"}</span>
     `;
     const body = document.createElement("div"); body.className = "wh-body"; body.hidden = true;
 
@@ -347,13 +289,13 @@ async function loadWebhooks() {
             parts.push(`<span class="meta"> · attempt ${d.attempts}`);
             if (d.status_code != null) parts.push(` · http ${d.status_code}`);
             parts.push(` · ${new Date(d.created_at).toLocaleString()}</span>`);
-            if (d.error) parts.push(`<div class="meta" style="color:#ff8b8b">error: ${esc(d.error)}</div>`);
+            if (d.error) parts.push(`<div class="meta err">Error: ${esc(d.error)}</div>`);
             if (d.response_body) parts.push(`<pre>${esc(d.response_body.slice(0, 400))}</pre>`);
             row.innerHTML = parts.join("");
             body.appendChild(row);
           }
         } catch (err) {
-          body.innerHTML = `<div class="meta" style="color:#ff8b8b">failed: ${esc(err.message)}</div>`;
+          body.innerHTML = `<div class="meta err">Failed: ${esc(err.message)}</div>`;
         }
       } else {
         body.hidden = true;
@@ -430,18 +372,18 @@ async function loadMemory(reset = true) {
 }
 
 function switchView(name) {
-  for (const b of document.querySelectorAll("nav button")) b.classList.toggle("active", b.dataset.view === name);
-  for (const v of document.querySelectorAll(".view")) v.classList.toggle("active", v.id === "view-" + name);
+  for (const b of document.querySelectorAll(".dash-nav button")) b.classList.toggle("active", b.dataset.view === name);
+  for (const v of document.querySelectorAll(".dash-view")) v.classList.toggle("active", v.id === "view-" + name);
   if (name === "kanban") loadKanban().catch(err => { console.error(err); clearKey(); });
   if (name === "webhooks") loadWebhooks().catch(err => { console.error(err); clearKey(); });
   if (name === "memory") loadMemory().catch(err => { console.error(err); clearKey(); });
 }
 
 async function init() {
-  if (!getKey()) { document.getElementById("auth").hidden = false; return; }
+  if (!getKey()) { document.getElementById("auth-wrap").hidden = false; return; }
   document.getElementById("app").hidden = false;
   try { await loadAudit(); } catch (e) { console.error(e); clearKey(); return; }
-  for (const b of document.querySelectorAll("nav button")) b.addEventListener("click", () => switchView(b.dataset.view));
+  for (const b of document.querySelectorAll(".dash-nav button")) b.addEventListener("click", () => switchView(b.dataset.view));
   document.getElementById("wh-refresh").addEventListener("click", () => loadWebhooks());
   document.getElementById("wh-filter").addEventListener("change", () => loadWebhooks());
   document.getElementById("mem-refresh").addEventListener("click", () => loadMemory());
@@ -461,13 +403,11 @@ init();
 </body>
 </html>
 """
+)
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request) -> HTMLResponse:
     if not settings.DASHBOARD_ENABLED:
-        raise HTTPException(
-            status_code=404,
-            detail="dashboard disabled; set DASHBOARD_ENABLED=true and restart",
-        )
+        return HTMLResponse(render_dashboard_disabled(), status_code=404)
     return HTMLResponse(_DASHBOARD_HTML)

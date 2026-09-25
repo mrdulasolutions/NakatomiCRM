@@ -5,7 +5,18 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.0.4] — 2026-09-25 — Email secrets at rest
+## [1.0.5] — 2026-09-25 — Branded audit dashboard
+
+### Changed
+
+- **`/dashboard`** uses Nakatomi Plaza branding (shared `brand_pages` stylesheet with welcome/OAuth).
+- **`DASHBOARD_ENABLED`** auto-on in `development` / `dev` / `local` when unset; branded HTML when disabled instead of JSON 404.
+- Docker Compose omits a false default so dev compose picks up the development auto-enable.
+
+### Docs
+
+- `nakatomi-dashboard` skill notes dev default and Plaza UI.
+
 
 ### Added
 

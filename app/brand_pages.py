@@ -1,4 +1,4 @@
-"""Shared HTML shells for OAuth and operator-facing auth pages."""
+"""Shared HTML shells for OAuth, operator auth, and the audit dashboard."""
 
 from __future__ import annotations
 
@@ -407,3 +407,376 @@ def render_oauth_complete(*, client_name: str, continue_url: str, delay_seconds:
     <p class="foot">OAuth 2.1 · PKCE · MCP-ready</p>
 """
     return _shell(title="Authorized", body=body, extra_head=extra)
+
+
+def render_dashboard_disabled() -> str:
+    body = """
+    <p class="mark">Nakatomi CRM</p>
+    <h1>Audit dashboard is off</h1>
+    <p class="lede">This deployment has the read-only audit UI disabled. Agents should use the REST API and MCP with a workspace API key.</p>
+    <p class="lede">To enable locally, set <strong>DASHBOARD_ENABLED=true</strong> and restart the app, then open <strong>/dashboard</strong> again.</p>
+    <a class="btn" href="/docs">API documentation</a>
+    <a class="btn secondary" href="/">Home</a>
+    <p class="foot">Do not enable on public URLs without additional access control.</p>
+"""
+    return _shell(title="Dashboard", body=body)
+
+
+_DASHBOARD_STYLES = """
+  body.dash-app { margin: 0; min-height: 100%; }
+  .dash-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(
+      105deg,
+      rgba(255, 255, 255, 0.94) 0%,
+      rgba(255, 255, 255, 0.86) 42%,
+      rgba(255, 255, 255, 0.55) 100%
+    );
+  }
+  .dash-header {
+    padding: 14px clamp(16px, 4vw, 28px);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(8px);
+  }
+  .dash-brand { min-width: 160px; }
+  .dash-brand .mark { margin: 0 0 4px; }
+  .dash-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .dash-meta {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .dash-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dash-nav button {
+    width: auto;
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: #fff;
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .dash-nav button.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .dash-btn-ghost {
+    width: auto;
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: #fff;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .dash-btn-ghost:hover { background: #f7f6f3; color: var(--ink); }
+  .dash-main { padding: clamp(12px, 3vw, 20px); flex: 1; }
+  .dash-view { display: none; }
+  .dash-view.active { display: block; }
+  .dash-auth-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px 64px;
+  }
+  .dash-auth {
+    width: min(440px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.12);
+    border-radius: 3px;
+    padding: clamp(28px, 4vw, 40px);
+    backdrop-filter: blur(6px);
+  }
+  .dash-auth h2 {
+    margin: 0 0 8px;
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .dash-auth .lede { margin-bottom: 16px; }
+  .dash-auth input { margin-top: 0; }
+  .dash-auth button#save {
+    margin-top: 18px;
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .dash-toolbar {
+    padding: 8px 4px 12px;
+    color: var(--muted);
+    font-size: 11px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .dash-toolbar .accent { color: var(--ink); font-weight: 600; }
+  .dash-select {
+    padding: 6px 10px;
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    font: inherit;
+    width: auto;
+  }
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .dash-section {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+  }
+  .dash-section h2 {
+    margin: 0;
+    padding: 10px 14px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    background: #f7f6f3;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .dash-section .body {
+    padding: 8px 14px;
+    overflow: auto;
+    font-size: 12px;
+    line-height: 1.55;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .dash-row { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .dash-row:last-child { border-bottom: none; }
+  .dash-row .k { color: var(--ink); font-weight: 600; }
+  .dash-row .t { color: var(--muted); font-size: 11px; }
+  .dash-empty { opacity: 0.55; padding: 12px 0; color: var(--muted); }
+  .pipe-label {
+    padding: 8px 4px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .kanban {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(240px, 1fr);
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .kanban .col {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    display: flex;
+    flex-direction: column;
+    max-height: 75vh;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+  }
+  .kanban .col h3 {
+    margin: 0;
+    padding: 10px 14px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: #f7f6f3;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .kanban .col h3 .won { color: var(--ok); }
+  .kanban .col h3 .lost { color: var(--err); }
+  .kanban .col h3 .count { color: var(--ink); font-weight: normal; }
+  .kanban .stack {
+    padding: 8px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .kanban .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 10px;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .kanban .card .name { color: var(--ink); font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
+  .kanban .card .meta { color: var(--muted); font-size: 11px; }
+  .kanban .card .amt { color: var(--ok); font-size: 11px; }
+  .wh-item {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  }
+  .wh-head {
+    padding: 10px 14px;
+    cursor: pointer;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .wh-head:hover { background: #f7f6f3; }
+  .wh-name { color: var(--ink); font-size: 13px; font-weight: 600; }
+  .wh-url {
+    color: var(--muted);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .wh-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .wh-badge.fail { color: var(--err); border-color: rgba(139, 30, 30, 0.25); background: var(--err-bg); }
+  .wh-badge.ok { color: var(--ok); border-color: rgba(27, 107, 69, 0.25); background: var(--ok-bg); }
+  .wh-badge.off { color: var(--muted); }
+  .wh-body { border-top: 1px solid var(--line); padding: 10px 14px; background: #fff; }
+  .wh-delivery {
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: 11px;
+    line-height: 1.5;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .wh-delivery:last-child { border-bottom: none; }
+  .wh-delivery .status {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-right: 6px;
+  }
+  .wh-delivery .status.succeeded { background: var(--ok-bg); color: var(--ok); }
+  .wh-delivery .status.dead { background: var(--err-bg); color: var(--err); }
+  .wh-delivery .status.pending { background: #f0ecff; color: #4a3a7a; }
+  .wh-delivery .event { color: var(--ink); font-weight: 600; }
+  .wh-delivery .meta { color: var(--muted); }
+  .wh-delivery .meta.err { color: var(--err); }
+  .wh-delivery pre {
+    margin: 4px 0 0 0;
+    padding: 6px 8px;
+    background: #f7f6f3;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    font-size: 10px;
+    color: var(--ink);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 200px;
+    overflow: auto;
+  }
+  .mem-link {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .mem-link .pill {
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .mem-link .pill.connector { color: #4a3a7a; border-color: rgba(74, 58, 122, 0.25); background: #f0ecff; }
+  .mem-link .pill.entity { color: var(--ok); border-color: rgba(27, 107, 69, 0.25); background: var(--ok-bg); }
+  .mem-link .ref { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mem-link .ref .mono { color: var(--ink); }
+  .mem-link .t { color: var(--muted); font-size: 10px; }
+  .mem-link .note {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 11px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--line);
+    margin-top: 6px;
+  }
+  .mem-load-more {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    margin-top: 8px;
+    background: #fff;
+    color: var(--ink);
+    border: 1px dashed var(--line);
+    border-radius: 2px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .mem-total { padding: 4px; color: var(--ink); font-size: 11px; font-weight: 600; }
+  @media (max-width: 720px) {
+    .dash-header { gap: 10px; }
+    .dash-nav { width: 100%; }
+  }
+"""
+
+
+def dashboard_stylesheet() -> str:
+    """CSS shared with OAuth/welcome (Plaza background + audit dashboard layout)."""
+    return _BASE_STYLES.replace("%%BG_URL%%", STATIC_BG) + _DASHBOARD_STYLES

@@ -30,7 +30,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       STORAGE_LOCAL_PATH: /app/data/files
-      DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-false}
+      # Omit DASHBOARD_ENABLED to auto-enable in development (see app/config.py).
+      DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-}
       MEMORY_CONNECTORS: ${MEMORY_CONNECTORS:-}
       DOCDEPLOY_API_KEY: ${DOCDEPLOY_API_KEY:-}
       DOCDEPLOY_BASE_URL: ${DOCDEPLOY_BASE_URL:-https://x402.docdeploy.io}

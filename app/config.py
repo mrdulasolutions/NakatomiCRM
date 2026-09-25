@@ -1,4 +1,6 @@
-from pydantic import field_validator
+from __future__ import annotations
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,8 +66,28 @@ class Settings(BaseSettings):
     CALENDAR_POLLER_ENABLED: bool = False
     CALENDAR_POLL_INTERVAL_SECONDS: int = 600
 
-    # Dashboard — local audit UI, off by default
+    # Dashboard — local audit UI. Off in production unless explicitly enabled.
     DASHBOARD_ENABLED: bool = False
+
+    @field_validator("DASHBOARD_ENABLED", mode="before")
+    @classmethod
+    def _dashboard_env_empty(cls, v: object) -> object:
+        if v is None or v == "":
+            return None
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_dashboard_in_dev(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("DASHBOARD_ENABLED")
+        if raw is not None and raw != "":
+            return data
+        env = str(data.get("ENVIRONMENT", "development")).lower()
+        data = dict(data)
+        data["DASHBOARD_ENABLED"] = env in ("development", "dev", "local")
+        return data
 
     # Public origin for OAuth/SSO redirects (e.g. https://crm.example.com).
     # Falls back to request Host headers when empty.

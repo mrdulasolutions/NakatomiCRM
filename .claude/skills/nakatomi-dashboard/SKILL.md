@@ -17,13 +17,16 @@ for local review.
    - If `docker-compose.yml` is present and Docker is running: `DASHBOARD_ENABLED=true docker compose up -d`
    - Otherwise: remind the user to run `./install.sh` or `pip install -r requirements.txt && DASHBOARD_ENABLED=true uvicorn app.main:app --reload`
 3. Wait for `/health` to return 200 (up to 30 seconds; poll every 1s).
-4. Ensure the dashboard is enabled (the env var was set above). If not, instruct the user to set `DASHBOARD_ENABLED=true` and restart.
+4. The audit dashboard is **on by default in development** (`ENVIRONMENT=development`).
+   For production-like runs, set `DASHBOARD_ENABLED=true` explicitly before starting.
 5. Open Chrome at `http://localhost:8000/dashboard`.
    - macOS: `open -a "Google Chrome" http://localhost:8000/dashboard`
    - Linux: `google-chrome http://localhost:8000/dashboard` or `xdg-open`
    - Windows: `start chrome http://localhost:8000/dashboard`
-6. Confirm to the user that the dashboard is up and point out the views:
-   timeline stream, recent contacts/companies/deals, webhook delivery log.
+6. Confirm to the user that the dashboard is up. It uses the same Nakatomi Plaza
+   branding as welcome/OAuth (light panels, `/static/nakatomi-plaza-bg.jpg`).
+   Point out the views: timeline stream, recent contacts/companies/deals,
+   webhook delivery log.
 
 ## Safety
 
