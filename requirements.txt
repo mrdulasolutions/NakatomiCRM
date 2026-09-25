@@ -11,8 +11,8 @@ psycopg[binary]==3.2.13   # 3.2.3 vanished from PyPI; binary wheels for 3.12
 alembic==1.14.0
 
 # Settings + validation
-pydantic==2.11.0
-pydantic[email]==2.11.0
+pydantic==2.13.5
+pydantic[email]==2.13.5
 pydantic-settings==2.7.0
 email-validator==2.2.0
 
