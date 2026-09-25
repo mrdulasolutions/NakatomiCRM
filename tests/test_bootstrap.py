@@ -14,7 +14,7 @@ def test_root_serves_welcome_html_on_fresh_install(client: TestClient) -> None:
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     body = r.text
-    assert "Welcome to Nakatomi" in body
+    assert "Claim this instance" in body
     assert 'name="email"' in body
     assert 'name="workspace_slug"' in body
 
@@ -116,7 +116,7 @@ def test_welcome_form_submission_returns_html_with_key(client: TestClient) -> No
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     body = r.text
-    assert "Nakatomi is yours." in body
+    assert "Nakatomi is yours" in body
     assert "form@example.com" in body
     # API key surfaces in the rendered success page exactly once
     assert "nk_" in body

@@ -6,12 +6,25 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import ApiKey, OAuthCode
+
+
+def _code_from_authorize_redirect(location: str) -> tuple[str, str | None]:
+    """OAuth POST /authorize redirects via /oauth/complete?to=… with code on target URI."""
+    parsed = urlparse(location)
+    if parsed.path == "/oauth/complete":
+        qs = parse_qs(parsed.query)
+        target = unquote(qs["to"][0])
+        tp = urlparse(target)
+        tqs = parse_qs(tp.query)
+        return tqs["code"][0], (tqs.get("state") or [None])[0]
+    qs = parse_qs(parsed.query)
+    return qs["code"][0], (qs.get("state") or [None])[0]
 
 
 def _pkce() -> tuple[str, str]:
@@ -107,10 +120,8 @@ def test_full_authorization_code_flow(client, workspace):
     )
     assert r.status_code == 302, r.text
     loc = r.headers["location"]
-    parsed = urlparse(loc)
-    qs = parse_qs(parsed.query)
-    assert qs["state"] == ["abc123"]
-    code = qs["code"][0]
+    code, got_state = _code_from_authorize_redirect(loc)
+    assert got_state == "abc123"
 
     # 3. Exchange the code for tokens with the PKCE verifier.
     r = client.post(
@@ -180,7 +191,7 @@ def test_pkce_verifier_mismatch_rejected(client, workspace):
         },
         follow_redirects=False,
     )
-    code = parse_qs(urlparse(r.headers["location"]).query)["code"][0]
+    code = _code_from_authorize_redirect(r.headers["location"])[0]
 
     # Wrong verifier — should fail with "PKCE verification failed".
     r = client.post(
@@ -225,7 +236,7 @@ def test_refresh_token_rotation(client, workspace):
         },
         follow_redirects=False,
     )
-    code = parse_qs(urlparse(r.headers["location"]).query)["code"][0]
+    code = _code_from_authorize_redirect(r.headers["location"])[0]
     tokens = client.post(
         "/oauth/token",
         data={
@@ -285,7 +296,7 @@ def test_revoke_endpoint(client, workspace):
         },
         follow_redirects=False,
     )
-    code = parse_qs(urlparse(r.headers["location"]).query)["code"][0]
+    code = _code_from_authorize_redirect(r.headers["location"])[0]
     access = client.post(
         "/oauth/token",
         data={
@@ -382,7 +393,7 @@ def test_access_token_row_has_expiry(client, workspace):
         },
         follow_redirects=False,
     )
-    code = parse_qs(urlparse(r.headers["location"]).query)["code"][0]
+    code = _code_from_authorize_redirect(r.headers["location"])[0]
     client.post(
         "/oauth/token",
         data={
@@ -435,7 +446,7 @@ def test_code_is_single_use_and_short_lived(client, workspace):
         },
         follow_redirects=False,
     )
-    code = parse_qs(urlparse(r.headers["location"]).query)["code"][0]
+    code = _code_from_authorize_redirect(r.headers["location"])[0]
 
     client.post(
         "/oauth/token",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app import __version__
 from app.cli import main as cli_main
 from app.protocol import PROTOCOL_VERSIONS, SUNSET_NOTICE_DAYS, protocol_manifest
 
@@ -20,7 +21,7 @@ def test_health_exposes_protocols(client):
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True
-    assert body["version"] == "1.0.0"
+    assert body["version"] == __version__
     assert body["stability"] == "stable"
     assert body["protocols"] == PROTOCOL_VERSIONS
     assert "otel" in body
@@ -60,7 +61,7 @@ def test_sso_start_unavailable_without_config(client):
 def test_cli_version_and_protocols(capsys):
     assert cli_main(["version"]) == 0
     out = capsys.readouterr().out
-    assert "1.0.0" in out
+    assert __version__ in out
     assert cli_main(["protocols"]) == 0
     assert "sunset_notice_days" in capsys.readouterr().out
     assert cli_main(["check-config"]) == 0
