@@ -29,7 +29,7 @@ httpx==0.28.1
 mcp==1.27.0
 
 # Optional S3-compatible file storage
-boto3==1.35.84
+boto3==1.43.100
 
 # Local .env loading
 python-dotenv==1.0.1
