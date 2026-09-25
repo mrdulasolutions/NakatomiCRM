@@ -1,6 +1,6 @@
 # Deploy and Host Nakatomi CRM on Railway
 
-Nakatomi is a **headless, agent-native CRM** (v1.0.7). REST + MCP + A2A + ACP on Postgres — built for Claude, ChatGPT, Cursor, and custom agent swarms.
+Nakatomi is a **headless, agent-native CRM** (v1.0.8). REST + MCP + A2A + ACP on Postgres — built for Claude, ChatGPT, Cursor, and custom agent swarms.
 
 ## About Hosting
 

@@ -490,6 +490,13 @@ _DASHBOARD_STYLES = """
     border-radius: 2px;
     cursor: pointer;
   }
+  .dash-header .dash-btn-ghost,
+  .dash-toolbar .dash-btn-ghost {
+    margin-top: 0;
+    text-transform: uppercase;
+    text-align: center;
+    display: inline-block;
+  }
   .dash-btn-ghost:hover { background: #f7f6f3; color: var(--ink); }
   .dash-main { padding: clamp(12px, 3vw, 20px); flex: 1; }
   .dash-main[hidden],

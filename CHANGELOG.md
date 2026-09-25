@@ -5,6 +5,12 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.8] — 2026-09-25 — Dashboard sign out
+
+### Fixed
+
+- **Sign out** clears `sessionStorage` and the API-key cookie with matching `Secure`/`path` attributes (HTTPS), and returns to the login panel without a broken reload loop.
+
 ## [1.0.7] — 2026-09-25 — Dashboard login panel visibility
 
 ### Fixed

@@ -133,15 +133,23 @@ function getKey() {
   const m = document.cookie.match(/(?:^|; )nk_dashboard_key=([^;]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
+function cookieTail() {
+  const secure = location.protocol === "https:" ? ";Secure" : "";
+  return `path=/;SameSite=Lax${secure}`;
+}
+
 function setKey(k) {
   try { sessionStorage.setItem(STORAGE_KEY, k); } catch (e) { /* ignore */ }
-  const secure = location.protocol === "https:" ? ";Secure" : "";
-  document.cookie = `${COOKIE}=${encodeURIComponent(k)};path=/;SameSite=Lax;max-age=2592000${secure}`;
+  document.cookie = `${COOKIE}=${encodeURIComponent(k)};${cookieTail()};max-age=2592000`;
 }
-function clearKey() {
+
+function signOut() {
   try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-  document.cookie = `${COOKIE}=;path=/;max-age=0`;
-  location.reload();
+  document.cookie = `${COOKIE}=;${cookieTail()};max-age=0`;
+  document.getElementById("key").value = "";
+  document.getElementById("auth-error").hidden = true;
+  document.getElementById("ws").textContent = "";
+  setDashboardAuth(true);
 }
 
 function showAuthError(msg) {
@@ -443,7 +451,7 @@ async function init() {
     const status = e.status || 0;
     if (status === 401) {
       try { sessionStorage.removeItem(STORAGE_KEY); } catch (x) { /* ignore */ }
-      document.cookie = `${COOKIE}=;path=/;max-age=0`;
+      document.cookie = `${COOKIE}=;${cookieTail()};max-age=0`;
     }
     showAuthError(
       status === 403
@@ -462,7 +470,10 @@ document.getElementById("save").onclick = async () => {
   setKey(k);
   await init();
 };
-document.getElementById("logout").onclick = clearKey;
+document.getElementById("logout").addEventListener("click", (e) => {
+  e.preventDefault();
+  signOut();
+});
 
 init();
 </script>
