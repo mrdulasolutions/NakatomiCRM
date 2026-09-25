@@ -22,7 +22,7 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1             # passlib 1.7.x breaks on bcrypt>=4.1
 
 # Uploads, HTTP client (webhooks, calendar, memory adapters)
-python-multipart==0.0.20
+python-multipart==0.0.32
 httpx==0.28.1
 
 # MCP streamable-HTTP server mounted at /mcp
