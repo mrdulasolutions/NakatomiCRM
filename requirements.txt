@@ -7,7 +7,7 @@ uvicorn[standard]==0.32.1
 
 # DB + migrations (Postgres-only; JSONB / pg_trgm required)
 sqlalchemy==2.0.36
-psycopg[binary]==3.2.13   # 3.2.3 vanished from PyPI; binary wheels for 3.12
+psycopg[binary]==3.3.6   # 3.2.3 vanished from PyPI; binary wheels for 3.12
 alembic==1.14.0
 
 # Settings + validation
