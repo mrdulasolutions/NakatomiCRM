@@ -1,14 +1,18 @@
 # Nakatomi
 
-> A headless CRM built for AI agents. No UI to click. No email to sync. Just a
-> clean structured API and an MCP server so Claude, ChatGPT, Cursor, and
-> Perplexity can work with your CRM as a first-class tool.
+Nakatomi is an open-source, agent-first CRM.
+
+A CRM designed to be operated by AI agents through MCP and APIs—not a traditional CRM with an AI assistant bolted on.
+
+Self-host it. Own your data. Give your agents persistent customer memory and business state.
+
+MIT licensed.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![CI](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml/badge.svg)](https://github.com/mrdulasolutions/NakatomiCRM/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-150%2B%20passing-7ee787.svg)](#tests)
-[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.8-blue.svg)](./CHANGELOG.md)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/nakatomicrm)
 
 ```mermaid
