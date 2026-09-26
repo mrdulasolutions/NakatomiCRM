@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-MCP_TOOLS_SCHEMA_VERSION = "1.1"
+MCP_TOOLS_SCHEMA_VERSION = "1.2"
 
 # Compound / Agent OS tools added in 1.0.10 — no sunset yet.
 MCP_TOOLS_MANIFEST: dict = {

@@ -27,9 +27,13 @@ that support OAuth should prompt a login; clients that use static keys must send
 | `create_contact` | Create a new contact |
 | `update_contact` | Patch an existing contact |
 | `search_companies` | Substring or domain search |
+| `get_company` | Single company by id |
 | `create_company` | Create a new company |
+| `update_company` | Patch an existing company |
 | `list_pipelines` | List pipelines + stages for deal creation |
 | `create_pipeline` | Create a pipeline and its stages in one call (for fresh installs or HubSpot-style imports) |
+| `search_deals` | Search deals by name and filters (status, company, pipeline, stage) |
+| `get_deal` | Single deal by id — use for "what's the status of the Acme deal?" after `search_deals` |
 | `create_deal` | Create a deal; picks default pipeline + first stage if unspecified |
 | `move_deal_stage` | Move a deal to a stage by slug (auto-sets status on won/lost stages) |
 | `add_line_item` | Add a line to a deal (snapshots from a `product_id` or accepts ad-hoc `name`+`unit_price`) |
@@ -44,6 +48,7 @@ that support OAuth should prompt a login; clients that use static keys must send
 | `add_note` | Markdown note on any entity |
 | `create_task` | Task on any entity |
 | `list_tasks` | Filter tasks by status and assignee |
+| `complete_task` | Mark a task done |
 | `relate` | Add a typed edge between two entities (relationship graph) |
 | `timeline` | Recent events for one entity |
 | `describe_schema` | Return the full entity/field/event manifest |

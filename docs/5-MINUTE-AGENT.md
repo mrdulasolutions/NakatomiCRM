@@ -26,7 +26,7 @@ Prefer one-click? Deploy above (~60–90s), set `PUBLIC_BASE_URL` to your Railwa
 
 ```bash
 git clone https://github.com/mrdulasolutions/NakatomiCRM.git
-cd NakatomiCRM
+cd NakatomiCRM   # directory name matches the repo — not "nakatomi"
 cp .env.example .env   # set SECRET_KEY (openssl rand -hex 32)
 docker compose up -d
 curl -s http://localhost:8000/health

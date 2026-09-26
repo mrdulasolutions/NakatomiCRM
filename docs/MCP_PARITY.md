@@ -8,15 +8,15 @@ surface — not 1:1 with every route.
 | Context boot | `GET /acp/context` | `load_context` | ACP pack |
 | Discovery | `GET /discovery`, `/schema` | `describe_schema` | |
 | Contacts | `/contacts/*` | `search_contacts`, `get_contact`, `create_contact`, `update_contact` | |
-| Companies | `/companies/*` | `search_companies`, `create_company` | |
+| Companies | `/companies/*` | `search_companies`, `get_company`, `create_company`, **`update_company`** | |
 | Account map | compose REST | **`upsert_account_map`** | compound |
 | Pipelines | `/pipelines/*` | `list_pipelines`, `create_pipeline` | |
-| Deals | `/deals/*` | `create_deal`, `move_deal_stage`, **`advance_deal`** | |
+| Deals | `/deals/*` | `search_deals`, `get_deal`, `create_deal`, `move_deal_stage`, **`advance_deal`** | |
 | Products / lines | `/products`, `/deals/…/line-items` | `create_product`, `search_products`, `add_line_item`, `list_line_items` | |
 | Forecast | `GET /forecast` | `forecast` | |
 | Activities | `/activities/*` | `log_activity`, **`log_interaction`** | |
 | Notes | `/notes/*` | `add_note` | |
-| Tasks | `/tasks/*` | `create_task`, `list_tasks` | |
+| Tasks | `/tasks/*` | `create_task`, `list_tasks`, **`complete_task`** | |
 | Relationships | `/relationships/*` | `relate` | |
 | Timeline | `/timeline/*` | `timeline` | |
 | Open work | compose | **`morning_briefing`** | compound |

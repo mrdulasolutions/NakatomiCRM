@@ -446,6 +446,56 @@ def create_company(
         db.close()
 
 
+@mcp.tool()
+def get_company(ctx: Context, company_id: str) -> dict:
+    """Fetch one company by id."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "companies:read")
+        c = db.get(Company, company_id)
+        if not c or c.workspace_id != p.workspace.id or c.deleted_at is not None:
+            raise RuntimeError("not found")
+        return _serialize(c)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def update_company(ctx: Context, company_id: str, updates: dict) -> dict:
+    """Patch an existing company. ``updates`` may contain any field from the company schema."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "companies:write")
+        c = db.get(Company, company_id)
+        if not c or c.workspace_id != p.workspace.id:
+            raise RuntimeError("not found")
+        if "data" in updates and updates["data"] is not None:
+            from app.services.custom_field_validate import validate_entity_data
+
+            try:
+                validate_entity_data(
+                    db, p.workspace.id, EntityType.company, updates["data"], merge_existing=c.data or {}
+                )
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
+        for k, v in updates.items():
+            if hasattr(c, k):
+                setattr(c, k, v)
+        _record_event(
+            db,
+            p,
+            event_type="company.updated",
+            entity_type=EntityType.company,
+            entity_id=c.id,
+            payload={"changes": list(updates.keys())},
+        )
+        db.commit()
+        db.refresh(c)
+        return _serialize(c)
+    finally:
+        db.close()
+
+
 @mcp.resource("crm://company/{company_id}")
 def mcp_resource_company(ctx: Context, company_id: str) -> str:
     """Read-only company JSON (REST parity: GET /companies/{id})."""
@@ -644,6 +694,52 @@ def create_deal(
         out = _serialize(d)
         _save(201, out)
         return out
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_deal(ctx: Context, deal_id: str) -> dict:
+    """Fetch one deal by id (amount, stage, status, company_id, expected_close_date, …)."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "deals:read")
+        d = db.get(Deal, deal_id)
+        if not d or d.workspace_id != p.workspace.id or d.deleted_at is not None:
+            raise RuntimeError("not found")
+        return _serialize(d)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def search_deals(
+    ctx: Context,
+    query: str | None = None,
+    status: str | None = None,
+    company_id: str | None = None,
+    pipeline_id: str | None = None,
+    stage_id: str | None = None,
+    limit: int = 25,
+) -> list[dict]:
+    """Search deals by name substring and optional filters (status, company, pipeline, stage)."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "deals:read")
+        q = select(Deal).where(Deal.workspace_id == p.workspace.id, Deal.deleted_at.is_(None))
+        if query:
+            like = f"%{query.lower()}%"
+            q = q.where(func.lower(Deal.name).like(like))
+        if status:
+            q = q.where(Deal.status == DealStatus(status))
+        if company_id:
+            q = q.where(Deal.company_id == company_id)
+        if pipeline_id:
+            q = q.where(Deal.pipeline_id == pipeline_id)
+        if stage_id:
+            q = q.where(Deal.stage_id == stage_id)
+        q = q.order_by(Deal.created_at.desc()).limit(min(limit, 200))
+        return [_serialize(d) for d in db.scalars(q).all()]
     finally:
         db.close()
 
@@ -849,6 +945,32 @@ def list_tasks(
             q = q.where(Task.assignee_user_id == assignee_user_id)
         q = q.order_by(Task.due_at.asc().nulls_last(), Task.created_at.desc()).limit(min(limit, 200))
         return [_serialize(t) for t in db.scalars(q).all()]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def complete_task(ctx: Context, task_id: str) -> dict:
+    """Mark a task done (status=done, sets completed_at)."""
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "tasks:write")
+        t = db.get(Task, task_id)
+        if not t or t.workspace_id != p.workspace.id:
+            raise RuntimeError("not found")
+        t.status = TaskStatus.done
+        t.completed_at = datetime.now(UTC)
+        _record_event(
+            db,
+            p,
+            event_type="task.updated",
+            entity_type=EntityType.task,
+            entity_id=t.id,
+            payload={"status": "done", "via": "mcp"},
+        )
+        db.commit()
+        db.refresh(t)
+        return _serialize(t)
     finally:
         db.close()
 

@@ -26,7 +26,7 @@ one yet, instruct them to run `POST /workspace/api-keys` or the `seed` script.
 
 Before mutating an entity, read its current state and its `timeline`:
 
-- MCP: `get_contact`, `timeline(entity_type, entity_id)`
+- MCP: `get_contact`, `get_deal`, `search_deals`, `timeline(entity_type, entity_id)`
 - REST: `GET /contacts/{id}`, `GET /timeline/{entity_type}/{entity_id}`
 
 This avoids redundant updates and preserves the audit story.
@@ -95,7 +95,8 @@ feed already has every mutation with actor and payload. Use it.
 ## Common tool flows
 
 - **Log a call:** `get_contact → log_activity(kind="call", subject, body, entity_type=contact, entity_id) → add_note(if transcript) → create_task(if follow-up)`
-- **Move a deal:** `get_deal → list_pipelines → move_deal_stage(deal_id, stage_slug)`
+- **Move a deal:** `search_deals` / `get_deal` → `list_pipelines` → `move_deal_stage(deal_id, stage_slug)`
+- **Acme deal status:** `search_companies(query="Acme")` → `search_deals(query="…", company_id=…)` → `get_deal(id)` or `entity_context("deal", …)`
 - **Onboard a company:** `create_company → for each contact: create_contact(+ company_id) → relate(contact, works_at, company)`
 - **Morning review:** `timeline(workspace, since=yesterday) → list_tasks(status=open, due_before=today+1d)`
 
