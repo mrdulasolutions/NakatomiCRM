@@ -16,7 +16,10 @@ MCP_TOOLS_MANIFEST: dict = {
         "agent_activity": {"since": "1.0.10", "scopes": ["timeline:read"]},
         "list_agents": {"since": "1.0.10", "scopes": ["workspace:read"]},
         "explain_change": {"since": "1.0.10", "scopes": ["timeline:read"]},
-        "upsert_account_map": {"since": "1.0", "scopes": ["companies:write", "contacts:write", "relationships:write"]},
+        "upsert_account_map": {
+            "since": "1.0",
+            "scopes": ["companies:write", "contacts:write", "relationships:write"],
+        },
         "advance_deal": {"since": "1.0", "scopes": ["deals:write"]},
         "log_interaction": {"since": "1.0", "scopes": ["activities:write"]},
     },
