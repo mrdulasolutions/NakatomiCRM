@@ -3,7 +3,7 @@
 
 # API framework + ASGI server (0.140.x pulls starlette with security fixes)
 fastapi==0.140.13
-uvicorn[standard]==0.34.0
+uvicorn[standard]==0.54.0
 
 # DB + migrations (Postgres-only; JSONB / pg_trgm required)
 sqlalchemy==2.0.54
