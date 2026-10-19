@@ -46,4 +46,4 @@ python-dotenv==1.2.3
 pytest==9.0.3
 pytest-cov==6.0.0
 ruff==0.8.4
-mypy==1.13.0
+mypy==2.3.1
