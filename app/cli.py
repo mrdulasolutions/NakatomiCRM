@@ -106,7 +106,9 @@ def cmd_check_config(_: argparse.Namespace) -> int:
     }
     recovery_enabled = recovery_origin() is not None
     if (settings.RECOVERY_RESEND_API_KEY or settings.RECOVERY_SMTP_HOST) and not recovery_enabled:
-        warnings.append("Recovery email is unavailable. Check the sender, mail provider settings, and public URL.")
+        warnings.append(
+            "Recovery email is unavailable. Check the sender, mail provider settings, and public URL."
+        )
     report = {
         "environment": settings.ENVIRONMENT,
         "ok": not issues,
