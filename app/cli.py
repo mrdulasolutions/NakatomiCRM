@@ -58,6 +58,7 @@ def cmd_check_config(_: argparse.Namespace) -> int:
     from app.config import settings
     from app.otel import is_available
     from app.otel import status as otel_status
+    from app.services.password_recovery import recovery_origin
 
     issues: list[str] = []
     warnings: list[str] = []
@@ -103,17 +104,56 @@ def cmd_check_config(_: argparse.Namespace) -> int:
         "google": bool(settings.SSO_GOOGLE_CLIENT_ID and settings.SSO_GOOGLE_CLIENT_SECRET),
         "github": bool(settings.SSO_GITHUB_CLIENT_ID and settings.SSO_GITHUB_CLIENT_SECRET),
     }
+    recovery_enabled = recovery_origin() is not None
+    if (settings.RECOVERY_RESEND_API_KEY or settings.RECOVERY_SMTP_HOST) and not recovery_enabled:
+        warnings.append(
+            "Recovery email is unavailable. Check the sender, mail provider settings, and public URL."
+        )
     report = {
         "environment": settings.ENVIRONMENT,
         "ok": not issues,
         "issues": issues,
         "warnings": warnings,
         "sso": sso,
+        "password_recovery_email_enabled": recovery_enabled,
         "otel": otel_status(),
         "database_driver": "psycopg" if "+psycopg" in settings.DATABASE_URL else "unknown",
     }
     print(json.dumps(report, indent=2))
     return 1 if issues else 0
+
+
+def cmd_reset_password(args: argparse.Namespace) -> int:
+    from getpass import GetPassWarning, getpass
+    from warnings import catch_warnings, simplefilter
+
+    from app.db import SessionLocal
+    from app.services.password_recovery import active_user, change_password
+
+    try:
+        with catch_warnings():
+            simplefilter("error", GetPassWarning)
+            password = getpass("New password: ")
+            confirmation = getpass("Confirm password: ")
+    except (EOFError, KeyboardInterrupt, GetPassWarning):
+        print("An interactive terminal is required for password reset.", file=sys.stderr)
+        return 1
+    if password != confirmation:
+        print("Passwords do not match.", file=sys.stderr)
+        return 1
+
+    with SessionLocal() as db:
+        user = active_user(db, args.email)
+        if not user:
+            print("No active account matches that email.", file=sys.stderr)
+            return 1
+        try:
+            change_password(db, user, password)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    print("Password updated. Existing browser sessions were revoked.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -133,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p_cfg = sub.add_parser("check-config", help="validate local env for production readiness")
     p_cfg.set_defaults(func=cmd_check_config)
+
+    p_reset = sub.add_parser("reset-password", help="reset an existing account password interactively")
+    p_reset.add_argument("--email", required=True, help="email of the existing account")
+    p_reset.set_defaults(func=cmd_reset_password)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

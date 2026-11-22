@@ -35,11 +35,13 @@ from app.routers import (
     forensics,
     import_crm,
     ingest,
+    invitations,
     jobs,
     leads,
     memory,
     notes,
     oauth,
+    password_recovery,
     pipelines,
     policies,
     products,
@@ -433,6 +435,7 @@ if _PUBLIC_DIR.exists():
 
 # REST routers
 app.include_router(auth.router)
+app.include_router(password_recovery.router)
 app.include_router(sso.router)
 app.include_router(workspaces.router)
 app.include_router(approvals.router)
@@ -469,6 +472,7 @@ app.include_router(custom_fields.router)
 app.include_router(exports.router)
 app.include_router(schema_router.router)
 app.include_router(dashboard.router)
+app.include_router(invitations.router)
 app.include_router(welcome.router)
 
 

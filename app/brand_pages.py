@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from html import escape
 
+from fastapi.responses import HTMLResponse
+
 STATIC_BG = "/static/nakatomi-plaza-bg.jpg"
 
 _BASE_STYLES = """
@@ -209,6 +211,21 @@ def esc(s: str) -> str:
     return escape(s, quote=True)
 
 
+def account_page(title: str, body: str, *, status_code: int = 200) -> HTMLResponse:
+    return HTMLResponse(
+        f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{esc(title)} · Nakatomi</title></head><body><main><h1>{esc(title)}</h1>{body}</main></body></html>""",
+        status_code=status_code,
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY",
+            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        },
+    )
+
+
 def _shell(*, title: str, body: str, extra_head: str = "", panel_class: str = "panel") -> str:
     styles = _BASE_STYLES.replace("%%BG_URL%%", STATIC_BG)
     return f"""<!doctype html>
@@ -290,6 +307,7 @@ def render_authorize_page(
       <input id="email" name="email" type="email" required autofocus value="{esc(email)}" />
       <label for="password">Password</label>
       <input id="password" name="password" type="password" required />
+      <p><a href="/auth/forgot-password">Forgot password?</a></p>
     """
     )
     body = f"""

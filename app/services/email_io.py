@@ -85,13 +85,12 @@ def send_email(
     subject: str,
     body: str,
     body_html: str | None = None,
+    require_auth: bool = True,
 ) -> None:
     """Send via SMTP using the workspace's configured creds. Raises on failure."""
-    if not cfg.smtp_host or not cfg.smtp_user or not cfg.smtp_password:
-        raise RuntimeError("SMTP not configured for this workspace")
     smtp_password = decrypt_stored_secret(cfg.smtp_password)
-    if not smtp_password:
-        raise RuntimeError("SMTP not configured for this workspace")
+    if not cfg.smtp_host or (require_auth and not (cfg.smtp_user and smtp_password)):
+        raise RuntimeError("SMTP not configured")
 
     msg = EmailMessage()
     msg["From"] = cfg.from_address or cfg.smtp_user
@@ -118,7 +117,8 @@ def send_email(
         if cfg.smtp_use_tls and not implicit_tls:
             smtp.starttls(context=context)
             smtp.ehlo()
-        smtp.login(cfg.smtp_user, smtp_password)
+        if cfg.smtp_user and smtp_password:
+            smtp.login(cfg.smtp_user, smtp_password)
         smtp.send_message(msg, to_addrs=recipients)
 
 
