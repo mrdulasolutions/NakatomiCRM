@@ -19,6 +19,7 @@ from app.schemas import (
     LeadPatch,
     Page,
 )
+from app.services.entity_patch import apply_lead_patch
 from app.services.events import emit
 from app.services.leads import convert_lead
 from app.services.pagination import apply_cursor, encode_cursor
@@ -160,23 +161,7 @@ def patch_lead(
     row = db.get(Lead, lead_id)
     if not row or row.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
-    updates = payload.model_dump(exclude_unset=True)
-    if "status" in updates and updates["status"] is not None:
-        try:
-            updates["status"] = LeadStatus(updates["status"])
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=f"invalid status: {updates['status']}") from e
-    for k, v in updates.items():
-        setattr(row, k, v)
-    emit(
-        db,
-        p,
-        event_type="lead.updated",
-        entity_type=EntityType.lead,
-        entity_id=row.id,
-        payload={"changes": list(updates.keys())},
-        background=background,
-    )
+    apply_lead_patch(db, p, row, payload.model_dump(exclude_unset=True), background=background)
     db.commit()
     db.refresh(row)
     return _out(row)

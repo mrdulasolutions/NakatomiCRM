@@ -32,7 +32,7 @@ from app.schemas import (
     ProductPatch,
 )
 from app.scopes import missing_scopes
-from app.services.diffs import compute_changes
+from app.services.entity_patch import apply_line_item_patch, apply_product_patch
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -147,18 +147,7 @@ def patch_product(
     prod = db.get(Product, product_id)
     if not prod or prod.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
-    updates = payload.model_dump(exclude_unset=True)
-    for k, v in updates.items():
-        setattr(prod, k, v)
-    changes = compute_changes(prod, list(updates.keys()))
-    emit(
-        db,
-        p,
-        event_type="product.updated",
-        entity_type=EntityType.product,
-        entity_id=prod.id,
-        payload={"changes": changes},
-    )
+    apply_product_patch(db, p, prod, payload.model_dump(exclude_unset=True))
     db.commit()
     db.refresh(prod)
     return ProductOut.model_validate(prod)
@@ -278,8 +267,7 @@ def patch_line_item(
     line = db.get(DealLineItem, line_id)
     if not line or line.deal_id != deal.id:
         raise HTTPException(status_code=404, detail="line item not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
-        setattr(line, k, v)
+    apply_line_item_patch(db, p, deal, line, payload.model_dump(exclude_unset=True))
     db.commit()
     db.refresh(line)
     return DealLineItemOut.model_validate(line)

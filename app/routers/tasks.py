@@ -10,7 +10,7 @@ from app.db import get_db
 from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
 from app.models import EntityType, Task, TaskStatus
 from app.schemas import OkResponse, Page, TaskIn, TaskOut, TaskPatch
-from app.services.diffs import compute_changes
+from app.services.entity_patch import apply_task_patch
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -103,21 +103,7 @@ def patch_task(
     t = db.get(Task, task_id)
     if not t or t.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
-    updates = payload.model_dump(exclude_unset=True)
-    for k, v in updates.items():
-        setattr(t, k, v)
-    if updates.get("status") == TaskStatus.done and not t.completed_at:
-        t.completed_at = datetime.now(UTC)
-    changes = compute_changes(t, list(updates.keys()))
-    emit(
-        db,
-        p,
-        event_type="task.updated",
-        entity_type=EntityType.task,
-        entity_id=t.id,
-        payload={"changes": changes},
-        background=background,
-    )
+    apply_task_patch(db, p, t, payload.model_dump(exclude_unset=True), background=background)
     db.commit()
     db.refresh(t)
     return TaskOut.model_validate(t)

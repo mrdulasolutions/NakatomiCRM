@@ -231,11 +231,13 @@ create_company
 
 create_lead
 search_leads
+update_lead
 convert_lead
 
 list_pipelines
 create_pipeline
 create_deal
+update_deal
 move_deal_stage
 
 create_product
