@@ -52,6 +52,18 @@ python -m app check-config
 | `OTEL_ENABLED` | Optional; install OTel packages first ([OBSERVABILITY.md](./OBSERVABILITY.md)) |
 | SSO client ids | Optional ([SSO.md](./SSO.md)) |
 
+## Validate a release on staging
+
+Keep `DASHBOARD_ENABLED=false` and `MEMORY_CONNECTORS` empty on public
+installations pending the security fixes. Use a disposable workspace and
+a database backup to test migrations and restore. Verify the HTTPS discovery
+URL, complete an MCP connection, confirm the granted permissions, and test
+disconnect. Validate archive restoration against a separate destination and
+review any provider links or integration settings that need reconfiguration.
+
+The session dashboard and agent onboarding are pending in [PR #31](https://github.com/mrdulasolutions/NakatomiCRM/pull/31).
+Agent workspace archives are pending in [PR #32](https://github.com/mrdulasolutions/NakatomiCRM/pull/32).
+
 After rotating `SECRET_KEY`, re-save workspace email config so IMAP/SMTP passwords re-encrypt.
 
 Protocol stability: [PROTOCOL_SLA.md](./PROTOCOL_SLA.md).

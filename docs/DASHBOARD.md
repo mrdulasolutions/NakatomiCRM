@@ -1,6 +1,8 @@
 # Audit dashboard
 
-Read-only operator UI at **`/dashboard`**. Agents use MCP/REST; humans use the dashboard to **audit** timeline, pipeline, webhooks, and memory links.
+Use **`/dashboard`** to inspect workspace activity and manage agent connections.
+
+> Session sign-in and agent onboarding are pending in [PR #31](https://github.com/mrdulasolutions/NakatomiCRM/pull/31). ZIP exports are pending in [PR #32](https://github.com/mrdulasolutions/NakatomiCRM/pull/32). Keep the dashboard disabled on public deployments until the safety review and staging checks are complete.
 
 **Wiki (screenshots + tour):** [GitHub Wiki — Dashboard](https://github.com/mrdulasolutions/NakatomiCRM/wiki/Dashboard)
 
@@ -56,7 +58,7 @@ or local use. The agent calls `export_workspace_zip` and returns a browser
 download link valid for 10 minutes. Share that link only with the intended
 recipient. The download is generated from the current workspace when opened.
 
-The ZIP includes the portable workspace JSON, a manifest, and restore
+The workspace ZIP is intended for import into an existing installation. It includes the portable workspace JSON, a manifest, and restore
 instructions for the selected target. Ask to include attachments or timeline
 history if you need them. An owner or admin can enable **Allow workspace ZIP exports** when creating a
 headless agent credential. Interactive OAuth agents must request `mcp:export` and receive owner or admin

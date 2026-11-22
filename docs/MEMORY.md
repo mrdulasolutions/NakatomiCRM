@@ -1,17 +1,18 @@
 # Memory connectors
 
-Nakatomi does not implement semantic memory. Agents already have good memory
-systems. Instead, Nakatomi offers a small bidirectional bridge:
+Nakatomi stores structured CRM records and links them to memories held by
+external providers. A `MemoryLink` connects a CRM entity to a connector name
+and an external record ID. Link, list, and trace operations work with no
+provider credentials configured.
 
-- **Outbound:** on every CRM mutation, Nakatomi can mirror a summary to each
-  configured memory connector.
-- **Inbound:** memory systems can POST to `/memory/webhook/{connector}` with a
-  signed payload; Nakatomi decodes it, finds the referenced CRM entity via
-  `MemoryLink`, and optionally triggers a CRM update.
-- **Cross-link:** every memory write returns a `MemoryLink` row that maps
-  `(crm_entity_type, crm_entity_id)` ↔ `(connector, external_id)`. Retrieving
-  a CRM entity can surface linked memories; recalling a memory can surface
-  linked CRM entities.
+Enabled connectors can receive event summaries from supported CRM write
+paths and answer recall requests. Mirroring is best effort. An empty recall
+result can also mean a connector failed or was unavailable.
+
+Keep external connectors disabled on shared installations until you have
+verified workspace isolation. Use dedicated provider credentials for each
+isolated installation. Enable outbound sharing only after reviewing the
+CRM data your provider will receive.
 
 ## Configure
 
@@ -33,14 +34,13 @@ GBRAIN_MCP_URL=https://your-brain.example.com/mcp
 GBRAIN_TOKEN=...
 ```
 
-Leave `MEMORY_CONNECTORS` empty to disable entirely. When disabled, all
-`/memory/*` endpoints still work but return empty results.
+Leave `MEMORY_CONNECTORS` empty to disable provider recall and mirroring. Existing links remain available.
 
 ## API
 
 ### `POST /memory/recall`
 
-Fan out a query across all enabled connectors, return merged results.
+Query the selected enabled connectors and return merged results. The REST endpoint currently requires `memory:write`. The MCP `memory_recall` tool requires `memory:read`.
 
 ```json
 POST /memory/recall
@@ -87,17 +87,23 @@ POST /memory/link
 
 ### `POST /memory/webhook/{connector}`
 
-Inbound webhook from a memory system. Each connector has its own payload
-format; the adapter is responsible for verifying the signature, extracting
-the relevant memory id and any CRM references, writing a `MemoryLink`, and
-optionally mutating the CRM.
+The endpoint accepts authenticated connector events and can create links for
+CRM references. Signature verification depends on the adapter. Keep inbound
+delivery private unless your adapter enforces provider signatures.
+
+## Export and restore
+
+Workspace exports preserve the link rows and external IDs. Provider-side
+memory content stays with the provider. Reconnect a compatible provider in
+the destination installation and verify that it can resolve the same IDs
+before relying on recall.
 
 ## Writing a new adapter
 
-1. Create `app/services/memory_adapters/<name>.py`
+1. Create `app/services/memory/adapters/<name>.py`
 2. Subclass `MemoryConnector` from `app.services.memory.base`
-3. Implement `store_event`, `recall`, and (optionally) `verify_webhook`
-4. Register the adapter in `app.services.memory.registry._BUILTINS`
+3. Implement workspace-scoped `store_event` and `recall`. Implement `verify_webhook` before enabling inbound delivery.
+4. Register the adapter in `app.services.memory.registry._builtins()`
 5. Document the env vars in `.env.example` and in this file
 
 See the `DocDeployConnector` and `SupermemoryConnector` implementations for a
@@ -119,6 +125,4 @@ evolve their APIs; GBrain's MCP tool surface is pinned to the upstream
 
 ## Conflict policy
 
-Currently: **inbound memory writes never overwrite CRM fields.** They can
-append to `data` and create timeline events. A future `conflict_policy`
-config will allow opt-in overwrite rules.
+Inbound connector events can create link rows and timeline events. CRM field updates remain explicit operations.

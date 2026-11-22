@@ -89,12 +89,12 @@ account or R2 setup required — it's all inside Railway.
 | `S3_ENDPOINT_URL` | (empty) | | Leave blank for AWS; set for Cloudflare R2, Backblaze, MinIO. |
 | `S3_ACCESS_KEY` | (empty) | | |
 | `S3_SECRET_KEY` | (empty, sensitive) | | |
-| `MEMORY_CONNECTORS` | (empty) | | Comma-separated: `docdeploy,supermemory,gbrain`. |
+| `MEMORY_CONNECTORS` | (empty) | | Keep empty on shared deployments pending workspace-isolation validation. |
 | `DOCDEPLOY_API_KEY` | (empty, sensitive) | | |
 | `SUPERMEMORY_API_KEY` | (empty, sensitive) | | |
 | `GBRAIN_MCP_URL` | (empty) | | |
 | `GBRAIN_TOKEN` | (empty, sensitive) | | |
-| `DASHBOARD_ENABLED` | `true` | | Browser users sign in with a Nakatomi account. Set false to disable the dashboard. |
+| `DASHBOARD_ENABLED` | Set `false` on public deployments | | Session sign-in is pending. Validate the dashboard on staging before enabling it publicly. |
 | `BOOTSTRAP_TOKEN` | (empty, sensitive) | | Recommended when the deploy URL may sit idle before first claim (`?token=`). |
 | `API_KEY_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `120` in production (`check-config` warns when `0`). |
 | `AUTH_RATE_LIMIT_PER_MINUTE` | `60` | | Per endpoint and source IP for login, OAuth authorization and registration, and bootstrap. |
