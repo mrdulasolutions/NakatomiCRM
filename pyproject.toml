@@ -50,6 +50,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B018", "SIM117"]
 "alembic/*" = ["E402"]
+"app/models.py" = ["UP042"]  # Preserve the existing string-enum behavior.
+"app/schemas.py" = ["UP046"]  # Preserve the existing Pydantic generic declaration.
 
 [tool.ruff.format]
 quote-style = "double"

@@ -92,14 +92,17 @@ alembic entirely.
 Make every structural migration idempotent:
 
 ```python
-def _cols(table): return {c["name"] for c in inspect(op.get_bind()).get_columns(table)}
+def _cols(table):
+    return {c["name"] for c in inspect(op.get_bind()).get_columns(table)}
+
 
 def upgrade():
     cols = _cols("webhook_deliveries")
     to_add = [col for col in candidates if col.name not in cols]
     if to_add:
         with op.batch_alter_table("webhook_deliveries") as batch:
-            for col in to_add: batch.add_column(col)
+            for col in to_add:
+                batch.add_column(col)
 ```
 
 See [`alembic/versions/0003_durable_webhooks.py`](../alembic/versions/0003_durable_webhooks.py),
@@ -148,9 +151,9 @@ Rewrite in the config layer so every caller sees the right URL:
 @classmethod
 def _normalize_db_url(cls, v):
     if v.startswith("postgres://"):
-        return "postgresql+psycopg://" + v[len("postgres://"):]
-    if v.startswith("postgresql://") and "+" not in v.split("://",1)[0]:
-        return "postgresql+psycopg://" + v[len("postgresql://"):]
+        return "postgresql+psycopg://" + v[len("postgres://") :]
+    if v.startswith("postgresql://") and "+" not in v.split("://", 1)[0]:
+        return "postgresql+psycopg://" + v[len("postgresql://") :]
     return v
 ```
 
@@ -503,6 +506,7 @@ mcp = FastMCP(
 async def _lifespan(_app: FastAPI):
     async with AsyncExitStack() as stack:
         from app.mcp_server import mcp as _mcp_server
+
         await stack.enter_async_context(_mcp_server.session_manager.run())
         if settings.WEBHOOK_WORKER_ENABLED:
             webhook_delivery.start_worker()

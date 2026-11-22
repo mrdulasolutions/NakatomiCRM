@@ -98,9 +98,7 @@ def evaluate_write(
     if missing:
         raise HTTPException(
             status_code=422,
-            detail=(
-                f"policy required_fields missing: {missing}; " f"suggestion: set {missing} before {action}"
-            ),
+            detail=(f"policy required_fields missing: {missing}; suggestion: set {missing} before {action}"),
         )
 
 

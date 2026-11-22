@@ -254,7 +254,7 @@ def enforce_resource_scope(resource: str):
         if miss:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(f"missing scopes: {miss}; " f"suggestion: mint a key with {needed} or '*'"),
+                detail=(f"missing scopes: {miss}; suggestion: mint a key with {needed} or '*'"),
             )
         return p
 
