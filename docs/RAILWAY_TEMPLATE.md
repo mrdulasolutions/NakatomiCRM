@@ -22,25 +22,36 @@ fallback is still in git history if we ever need to go back to it.
 | Marketplace metadata | Sync env vars + republish when [`.env.example`](../.env.example) changes (see checklist below) |
 | Code on new installs | Pulled from **GitHub `main`** at deploy time — keep `main` green |
 
-**Refresh checklist after a release (e.g. v1.0.8):**
+## Refresh the published template after a release
 
-1. Push `main` (and tag `v1.0.8` if you cut a release).
-2. Wait for GitHub Actions green on `main`.
-3. Redeploy demo service: `railway up --service nakatomi` (or Railway **Redeploy**).
-4. In Railway **template settings**, add/sync any new optional vars from the table below (`BOOTSTRAP_TOKEN`, rate limits, etc.) — defaults can stay `0`/empty.
-5. **Sync from Project** or `railway templates publish nakatomicrm --readme-file docs/RAILWAY_TEMPLATE_README.md --demo-project <project-id> …`
-6. Smoke: `GET /health` (version `1.0.6`), branded welcome at `/`, `GET /oauth/login`, `POST /mcp` with Bearer key.
-7. `python -m app check-config` in the Railway shell with production env (optional).
+The template uses GitHub `main`. Publishing a GitHub tag alone does not
+change its deployment source.
+
+1. Confirm the intended release commit is on `main` and GitHub Actions is green.
+2. Deploy that revision to staging. Check `/health` for the release version,
+   run `python -m app check-config`, and verify database migrations and storage.
+3. Verify discovery over HTTPS and complete an authenticated, read-only MCP
+   tool call. Use a disposable workspace to check archive download and restore
+   when the release includes those features.
+4. Compare the template variables and service graph with staging. Keep
+   generated secrets, the Postgres reference, and the storage configuration
+   specific to each installation. Keep dashboard and memory settings at their
+   reviewed public-deployment defaults.
+5. In Railway, update the template configuration and publish the overview in
+   [RAILWAY_TEMPLATE_README.md](./RAILWAY_TEMPLATE_README.md). Verify the
+   public listing and perform a fresh template install before promoting it.
+
+Railway can notify existing template users about GitHub source updates.
+Users choose when to apply those updates. See the [Railway template update
+documentation](https://docs.railway.com/templates/updates).
 
 ---
 
 ## Upgrading file storage to Railway Bucket (optional)
 
-The template provisions Nakatomi with `STORAGE_BACKEND=local`, writing
-uploads to `/app/data/files` on a mounted volume. That's durable
-enough for most deploys. If you want the same durability guarantees
-as object storage — cross-region replication, multi-replica scale-out,
-no volume to baby-sit — swap to a **Railway Bucket**:
+The published template lists a **Nakatomi Files** bucket. Verify the app service
+is connected to it before relying on object storage. For an existing local
+storage deployment, use the following configuration to switch to the bucket:
 
 1. In your Railway project, click **+ New → Bucket**. Name it `nakatomi-files` (or similar).
 2. On the nakatomi service, paste these as **reference variables** (Railway auto-resolves them at deploy time — rotations flow through):
@@ -89,15 +100,15 @@ account or R2 setup required — it's all inside Railway.
 | `S3_ENDPOINT_URL` | (empty) | | Leave blank for AWS; set for Cloudflare R2, Backblaze, MinIO. |
 | `S3_ACCESS_KEY` | (empty) | | |
 | `S3_SECRET_KEY` | (empty, sensitive) | | |
-| `MEMORY_CONNECTORS` | (empty) | | Comma-separated: `docdeploy,supermemory,gbrain`. |
+| `MEMORY_CONNECTORS` | (empty) | | Keep empty on shared deployments pending workspace-isolation validation. |
 | `DOCDEPLOY_API_KEY` | (empty, sensitive) | | |
 | `SUPERMEMORY_API_KEY` | (empty, sensitive) | | |
 | `GBRAIN_MCP_URL` | (empty) | | |
 | `GBRAIN_TOKEN` | (empty, sensitive) | | |
-| `DASHBOARD_ENABLED` | `false` | | Don't turn on in public deployments unless the dashboard is behind auth. |
+| `DASHBOARD_ENABLED` | Set `false` on public deployments | | Session sign-in is pending. Validate the dashboard on staging before enabling it publicly. |
 | `BOOTSTRAP_TOKEN` | (empty, sensitive) | | Recommended when the deploy URL may sit idle before first claim (`?token=`). |
 | `API_KEY_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `120` in production (`check-config` warns when `0`). |
-| `AUTH_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `30` for `/auth/login`, `/bootstrap` in production. |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | `60` | | Per endpoint and source IP for login, OAuth authorization and registration, and bootstrap. |
 | `CORS_ORIGINS` | `*` | | Prefer explicit origins in production. |
 | `WEBHOOK_WORKER_ENABLED` | `true` | | |
 | `WEBHOOK_TIMEOUT_SECONDS` | `10` | | |

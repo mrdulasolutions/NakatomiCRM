@@ -30,7 +30,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       STORAGE_LOCAL_PATH: /app/data/files
-      # Omit DASHBOARD_ENABLED to auto-enable in development (see app/config.py).
+      # The dashboard is enabled by default and uses browser sign-in.
       DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-}
       MEMORY_CONNECTORS: ${MEMORY_CONNECTORS:-}
       DOCDEPLOY_API_KEY: ${DOCDEPLOY_API_KEY:-}

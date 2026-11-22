@@ -18,6 +18,8 @@ from __future__ import annotations
 import imaplib
 import logging
 import smtplib
+import socket
+import ssl
 import threading
 import time
 from collections.abc import Iterable
@@ -34,8 +36,39 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import Activity, Contact, EmailConfig, EntityType, TimelineEvent, Workspace
 from app.security import decrypt_stored_secret
+from app.services.egress import resolve_destination
 
 log = logging.getLogger("nakatomi.email")
+
+
+class _PinnedSMTP(smtplib.SMTP):
+    def _get_socket(self, host, port, timeout):
+        return socket.create_connection((resolve_destination(host, port), port), timeout, self.source_address)
+
+
+class _PinnedSMTPSSL(smtplib.SMTP_SSL):
+    def _get_socket(self, host, port, timeout):
+        sock = socket.create_connection((resolve_destination(host, port), port), timeout, self.source_address)
+        return _verified_socket(sock, self.context, host)
+
+
+class _PinnedIMAP(imaplib.IMAP4):
+    def _create_socket(self, timeout):
+        return socket.create_connection((resolve_destination(self.host, self.port), self.port), timeout)
+
+
+class _PinnedIMAPSSL(imaplib.IMAP4_SSL):
+    def _create_socket(self, timeout):
+        sock = socket.create_connection((resolve_destination(self.host, self.port), self.port), timeout)
+        return _verified_socket(sock, self.ssl_context, self.host)
+
+
+def _verified_socket(sock, context, host):
+    try:
+        return context.wrap_socket(sock, server_hostname=host)
+    except BaseException:
+        sock.close()
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -73,11 +106,17 @@ def send_email(
         msg.add_alternative(body_html, subtype="html")
 
     recipients = list({*to, *cc, *bcc})
-    smtp_cls = smtplib.SMTP_SSL if (cfg.smtp_port or 0) == 465 else smtplib.SMTP
-    with smtp_cls(cfg.smtp_host, cfg.smtp_port or 587, timeout=30) as smtp:
+    implicit_tls = cfg.smtp_port == 465
+    context = ssl.create_default_context()
+    connection = (
+        _PinnedSMTPSSL(cfg.smtp_host, 465, timeout=30, context=context)
+        if implicit_tls
+        else _PinnedSMTP(cfg.smtp_host, cfg.smtp_port or 587, timeout=30)
+    )
+    with connection as smtp:
         smtp.ehlo()
-        if cfg.smtp_use_tls and smtp_cls is smtplib.SMTP:
-            smtp.starttls()
+        if cfg.smtp_use_tls and not implicit_tls:
+            smtp.starttls(context=context)
             smtp.ehlo()
         smtp.login(cfg.smtp_user, smtp_password)
         smtp.send_message(msg, to_addrs=recipients)
@@ -189,9 +228,15 @@ def poll_workspace(cfg: EmailConfig) -> int:
     if not imap_password:
         return 0
 
-    imap_cls = imaplib.IMAP4_SSL if cfg.imap_use_ssl else imaplib.IMAP4
+    connection = (
+        _PinnedIMAPSSL(
+            cfg.imap_host, cfg.imap_port or 993, timeout=30, ssl_context=ssl.create_default_context()
+        )
+        if cfg.imap_use_ssl
+        else _PinnedIMAP(cfg.imap_host, cfg.imap_port or 143, timeout=30)
+    )
     fetched = 0
-    with imap_cls(cfg.imap_host, cfg.imap_port or (993 if cfg.imap_use_ssl else 143)) as imap:
+    with connection as imap:
         imap.login(cfg.imap_user, imap_password)
         imap.select(cfg.imap_folder, readonly=True)
         # SEARCH UID > last_seen — IMAP4 SEARCH supports `UID N:*`.

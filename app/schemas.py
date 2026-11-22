@@ -761,6 +761,7 @@ class MemoryRecallItem(BaseModel):
 
 class MemoryRecallOut(BaseModel):
     items: list[MemoryRecallItem]
+    failed_connectors: list[str] = Field(default_factory=list)
 
 
 class MemoryLinkIn(BaseModel):

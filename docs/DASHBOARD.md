@@ -1,22 +1,18 @@
 # Audit dashboard
 
-Read-only operator UI at **`/dashboard`**. Agents use MCP/REST; humans use the dashboard to **audit** timeline, pipeline, webhooks, and memory links.
+Use **`/dashboard`** to inspect workspace activity and manage agent connections.
+
+> Session sign-in and agent onboarding are pending in [PR #31](https://github.com/mrdulasolutions/NakatomiCRM/pull/31). ZIP exports are pending in [PR #32](https://github.com/mrdulasolutions/NakatomiCRM/pull/32). Keep the dashboard disabled on public deployments until the safety review and staging checks are complete.
 
 **Wiki (screenshots + tour):** [GitHub Wiki — Dashboard](https://github.com/mrdulasolutions/NakatomiCRM/wiki/Dashboard)
 
 ---
 
-## Enable
+## Sign in
 
-```bash
-DASHBOARD_ENABLED=true
-```
+Open **`/dashboard`** and sign in with your Nakatomi email and password or a configured Google or GitHub provider. Select a workspace if you belong to more than one. The server stores your session and invalidates it when you sign out. Set `DASHBOARD_ENABLED=false` to disable the dashboard.
 
-Auto-enabled in `ENVIRONMENT=development` when unset. Paste an API key at login (stored in path-scoped cookie). **Sign out** clears the cookie.
-
-Production example: https://nakatomi-production.up.railway.app/dashboard
-
----
+For Railway, configure `ENVIRONMENT=production` and a strong `SECRET_KEY`. Set `PUBLIC_BASE_URL` to your canonical HTTPS origin when using a custom domain. The app otherwise uses the Railway service domain. Use that same origin for the provider callback URLs.
 
 ## Views
 
@@ -43,16 +39,27 @@ The Memory tab distinguishes **`MEMORY_CONNECTORS`** (server adapters) from **li
 
 ---
 
-## Scopes
+## Connect an agent
 
-Use a read-capable key: `timeline:read`, entity reads, `webhooks:read`, `memory:read`, or `*`.
+Workspace owners and admins can open **Connect an agent** to copy the MCP URL, issue a dedicated headless credential, test a read-only tool, and disconnect credentials. Read-only is the default. Select **Allow CRM writes** when the bot needs to modify records.
 
----
+- **Grok API and headless DOTs:** point the runtime at the displayed HTTPS `/mcp` URL. Store the credential in the runtime’s secret store and pass it as MCP authorization. Displayed credentials can be copied once.
+- **Interactive DOTs and MCP clients:** use the same URL and approve the workspace and scopes in the browser. `mcp` grants reads and `mcp:write` requests CRM writes. Clients refresh delegated tokens with their registered client ID.
+- **Multiple Railway replicas:** validate your clients with `MCP_STATELESS_HTTP=true` before scaling so requests do not depend on in-memory session affinity.
 
-## Safety
+Existing OAuth access tokens with legacy wildcard permissions are retired during upgrade. Clients that have a valid refresh token and their registered client ID can renew. Reconnect clients that cannot refresh. Workspace API keys issued outside OAuth continue to work.
 
-Not a multi-user CRM UI. Cookie holds the raw key. Prefer local bind or reverse-proxy auth in production.
+See [SSO setup](SSO.md) for provider callbacks.
 
-Launch skill: [.claude/skills/nakatomi-dashboard](../.claude/skills/nakatomi-dashboard/SKILL.md)
+## Export a workspace through an agent
 
-Implementation: `app/routers/dashboard.py`
+Ask a connected agent to **export this workspace as a ZIP for Railway**, a VPS,
+or local use. The agent calls `export_workspace_zip` and returns a browser
+download link valid for 10 minutes. Share that link only with the intended
+recipient. The download is generated from the current workspace when opened.
+
+The workspace ZIP is intended for import into an existing installation. It includes the portable workspace JSON, a manifest, and restore
+instructions for the selected target. Ask to include attachments or timeline
+history if you need them. An owner or admin can enable **Allow workspace ZIP exports** when creating a
+headless agent credential. Interactive OAuth agents must request `mcp:export` and receive owner or admin
+approval. Attachment bytes also require `files:read`.

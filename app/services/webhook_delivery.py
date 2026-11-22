@@ -19,7 +19,6 @@ import logging
 import threading
 from datetime import UTC, datetime, timedelta
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -27,6 +26,8 @@ from app.config import settings
 from app.db import db_session
 from app.models import Webhook, WebhookDelivery
 from app.security import hmac_sign
+from app.services.egress import outgoing_request
+from app.services.memory.delivery import process_pending as process_memory_deliveries
 
 log = logging.getLogger("nakatomi.webhooks")
 
@@ -68,8 +69,9 @@ def _deliver_one(delivery: WebhookDelivery, hook: Webhook) -> tuple[bool, int | 
         "X-Nakatomi-Delivery-Timestamp": datetime.now(UTC).isoformat(),
     }
     try:
-        with httpx.Client(timeout=settings.WEBHOOK_TIMEOUT_SECONDS) as client:
-            r = client.post(hook.url, content=body, headers=headers)
+        r = outgoing_request(
+            "POST", hook.url, content=body, headers=headers, timeout=settings.WEBHOOK_TIMEOUT_SECONDS
+        )
         ok = 200 <= r.status_code < 300
         return ok, r.status_code, r.text[:4000], None if ok else f"http {r.status_code}"
     except Exception as e:  # noqa: BLE001
@@ -141,7 +143,7 @@ def _run_forever(stop: threading.Event) -> None:
     log.info("webhook worker started")
     while not stop.is_set():
         try:
-            n = process_pending_deliveries(limit=20)
+            n = process_pending_deliveries(limit=20) + process_memory_deliveries()
             if n == 0:
                 stop.wait(timeout=5.0)
         except Exception:

@@ -106,7 +106,7 @@ def decide(
     approval_id: str,
     payload: ApprovalDecide,
     db: Session = Depends(get_db),
-    p: Principal = Depends(require_scopes("approvals:write")),
+    p: Principal = Depends(require_scopes("approvals:write", "approvals:decide")),
 ) -> ApprovalOut:
     # Deciding is a privileged act: require owner/admin role OR admin:keys scope
     # so a low-privilege agent cannot self-approve.

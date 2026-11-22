@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import field_validator, model_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,12 +49,13 @@ class Settings(BaseSettings):
     API_KEY_RATE_LIMIT_PER_MINUTE: int = 0
 
     # Unauthenticated auth/bootstrap POST rate limit (fixed 60s window). 0 disables.
-    AUTH_RATE_LIMIT_PER_MINUTE: int = 0
+    AUTH_RATE_LIMIT_PER_MINUTE: int = 60
 
     # When set, first-run /bootstrap and /welcome/signup require ?token= matching this value.
     BOOTSTRAP_TOKEN: str = ""
 
     CORS_ORIGINS: str = "*"
+    INTEGRATION_PRIVATE_HOSTS: str = ""
 
     # Memory connectors — comma-separated list; each adapter reads its own env vars
     MEMORY_CONNECTORS: str = ""
@@ -66,32 +67,24 @@ class Settings(BaseSettings):
     CALENDAR_POLLER_ENABLED: bool = False
     CALENDAR_POLL_INTERVAL_SECONDS: int = 600
 
-    # Dashboard — local audit UI. Off in production unless explicitly enabled.
-    DASHBOARD_ENABLED: bool = False
+    DASHBOARD_ENABLED: bool = True
 
     @field_validator("DASHBOARD_ENABLED", mode="before")
     @classmethod
-    def _dashboard_env_empty(cls, v: object) -> object:
-        if v is None or v == "":
-            return None
-        return v
+    def _dashboard_default(cls, value: object) -> object:
+        return True if value in (None, "") else value
 
-    @model_validator(mode="before")
-    @classmethod
-    def _default_dashboard_in_dev(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        raw = data.get("DASHBOARD_ENABLED")
-        if raw is not None and raw != "":
-            return data
-        env = str(data.get("ENVIRONMENT", "development")).lower()
-        data = dict(data)
-        data["DASHBOARD_ENABLED"] = env in ("development", "dev", "local")
-        return data
-
-    # Public origin for OAuth/SSO redirects (e.g. https://crm.example.com).
-    # Falls back to request Host headers when empty.
     PUBLIC_BASE_URL: str = ""
+    RAILWAY_PUBLIC_DOMAIN: str = ""
+    MCP_STATELESS_HTTP: bool = False
+
+    @property
+    def public_origin(self) -> str:
+        if self.PUBLIC_BASE_URL.strip():
+            return self.PUBLIC_BASE_URL.strip().rstrip("/")
+        if self.RAILWAY_PUBLIC_DOMAIN.strip():
+            return f"https://{self.RAILWAY_PUBLIC_DOMAIN.strip()}"
+        return ""
 
     # Optional OpenTelemetry (see app/otel.py, docs/OBSERVABILITY.md)
     OTEL_ENABLED: bool = False

@@ -56,6 +56,8 @@ def test_alembic_upgrade_head():
     cfg = Config("alembic.ini")
     cfg.set_main_option("sqlalchemy.url", migrate_url)
     command.upgrade(cfg, "head")
+    command.downgrade(cfg, "0017_browser_oauth")
+    command.upgrade(cfg, "head")
 
     with eng.connect() as conn:
         tables = {
@@ -64,6 +66,8 @@ def test_alembic_upgrade_head():
     assert "workspaces" in tables
     assert "api_keys" in tables
     assert "approval_requests" in tables
+    assert "browser_sessions" in tables
+    assert "memory_deliveries" in tables
     with eng.connect() as conn:
         cols = {
             r[0]

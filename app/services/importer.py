@@ -30,6 +30,7 @@ source-id → new-id built as we go.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -54,6 +55,7 @@ from app.models import (
     Task,
     Webhook,
 )
+from app.services.deal_references import validate_deal_references
 
 
 @dataclass
@@ -344,16 +346,21 @@ def _import_deals(db, workspace_id, rows, id_map, result):
     for r in rows:
         existing = match(db, workspace_id, Deal, r)
         fields = _copy_fields(r, keys=keys, translate_ids=id_map)
+        fields.pop("owner_user_id", None)
+        pipeline = fields.get("pipeline_id", existing.pipeline_id if existing else None)
+        stage = fields.get("stage_id", existing.stage_id if existing else None)
+        try:
+            validate_deal_references(db, workspace_id, pipeline, stage, fields)
+        except ValueError as exc:
+            result.warnings.append(f"deal '{r.get('name')}' skipped: {exc}")
+            _bump(result.skipped, "deals")
+            continue
         if existing:
             for k, v in fields.items():
                 setattr(existing, k, v)
             deal = existing
             _bump(result.updated, "deals")
         else:
-            if not fields.get("pipeline_id") or not fields.get("stage_id"):
-                result.warnings.append(f"deal '{r.get('name')}' skipped: missing pipeline_id/stage_id")
-                _bump(result.skipped, "deals")
-                continue
             deal = Deal(workspace_id=workspace_id, **fields)
             db.add(deal)
             db.flush()
@@ -560,6 +567,11 @@ def _import_memory_links(db, workspace_id, rows, id_map, result):
     db.flush()
 
 
+def imported_file_key(workspace_id: str, source_id: str) -> str:
+    digest = hashlib.sha256(source_id.encode()).hexdigest()
+    return f"{workspace_id}/imports/{digest}/file"
+
+
 def _import_files(db, workspace_id, rows, id_map, result):
     for r in rows:
         entity_id = id_map.get(r.get("entity_id"), r.get("entity_id"))
@@ -582,7 +594,9 @@ def _import_files(db, workspace_id, rows, id_map, result):
                     content_type=r.get("content_type", "application/octet-stream"),
                     size_bytes=r.get("size_bytes", 0),
                     sha256=r.get("sha256"),
-                    storage_key=r.get("storage_key", ""),
+                    storage_key=imported_file_key(
+                        workspace_id, str(r.get("id") or r.get("sha256") or uuid.uuid4())
+                    ),
                     entity_type=r.get("entity_type"),
                     entity_id=entity_id,
                     data=r.get("data") or {},

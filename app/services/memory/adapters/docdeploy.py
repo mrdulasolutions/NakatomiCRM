@@ -61,8 +61,7 @@ class DocDeployConnector(MemoryConnector):
             r = self._client.post("/v1/remember_memory", json=payload)
             r.raise_for_status()
         except Exception as e:  # noqa: BLE001
-            log.warning("docdeploy store failed: %s", e)
-            return None
+            raise RuntimeError("Memory write failed") from e
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         ext_id = data.get("id") or data.get("memory_id") or ""
         return MemoryWriteResult(connector=self.name, external_id=ext_id, raw_response=data)
@@ -76,19 +75,20 @@ class DocDeployConnector(MemoryConnector):
         crm_entity_id: str | None = None,
         limit: int = 10,
     ) -> list[MemoryItem]:
-        payload: dict = {"query": query, "limit": limit}
+        payload: dict = {"query": query, "limit": limit, "filters": {"metadata.workspace_id": workspace_id}}
         if crm_entity_type and crm_entity_id:
-            payload["filters"] = {
-                "metadata.crm_entity_type": crm_entity_type,
-                "metadata.crm_entity_id": crm_entity_id,
-            }
+            payload["filters"].update(
+                {
+                    "metadata.crm_entity_type": crm_entity_type,
+                    "metadata.crm_entity_id": crm_entity_id,
+                }
+            )
         try:
             r = self._client.post("/v1/recall_memory", json=payload)
             r.raise_for_status()
             items = r.json().get("items", [])
         except Exception as e:  # noqa: BLE001
-            log.warning("docdeploy recall failed: %s", e)
-            return []
+            raise RuntimeError("Memory recall failed") from e
         out: list[MemoryItem] = []
         for it in items:
             out.append(

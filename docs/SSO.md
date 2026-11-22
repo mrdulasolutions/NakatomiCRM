@@ -36,7 +36,7 @@ Redirect URIs to register with the IdP:
 ## Behaviour
 
 1. Existing user matched by `(sso_provider, sso_subject)` → login.
-2. Else existing user matched by **email** → link SSO fields, login.
+2. Else link by a provider-verified email if the existing account has no linked identity.
 3. Else create user with `password_hash=null` (SSO-only).
 4. If no membership and `SSO_AUTO_CREATE_WORKSPACE=true`, create a
    personal workspace as owner.

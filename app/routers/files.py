@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -13,7 +14,7 @@ from app.deps import Principal, enforce_resource_scope, get_principal
 from app.models import EntityType, File
 from app.schemas import FileOut, OkResponse
 from app.services.events import emit
-from app.services.storage import get_storage
+from app.services.storage import get_storage, owned_storage_key
 
 router = APIRouter(
     prefix="/files",
@@ -47,7 +48,7 @@ async def upload_file(
         size += len(chunk)
     await upload.seek(0)
 
-    key = f"{p.workspace.id}/{uuid.uuid4()}/{upload.filename or 'file'}"
+    key = f"{p.workspace.id}/{uuid.uuid4()}/file"
     storage = get_storage()
     storage.put(key, upload.file, upload.content_type or "application/octet-stream")
 
@@ -98,7 +99,7 @@ def list_files(
 @router.get("/{file_id}")
 def download_file(file_id: str, db: Session = Depends(get_db), p: Principal = Depends(get_principal)):
     f = db.get(File, file_id)
-    if not f or f.workspace_id != p.workspace.id:
+    if not f or f.workspace_id != p.workspace.id or not owned_storage_key(p.workspace.id, f.storage_key):
         raise HTTPException(status_code=404, detail="not found")
     storage = get_storage()
     # Prefer a presigned URL when the backend offers one — the client hits
@@ -106,12 +107,21 @@ def download_file(file_id: str, db: Session = Depends(get_db), p: Principal = De
     url = storage.presigned_url(f.storage_key)
     if url:
         return {"url": url, "expires_seconds": 900}
-    # Otherwise stream the body. iter_chunks closes the stream when exhausted.
+    try:
+        stream = storage.open(f.storage_key)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(404, "Attachment bytes unavailable") from exc
+
+    def chunks():
+        with stream:
+            while data := stream.read(_CHUNK):
+                yield data
+
     return StreamingResponse(
-        storage.iter_chunks(f.storage_key),
+        chunks(),
         media_type=f.content_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{f.filename}"',
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(f.filename, safe='')}",
             "Content-Length": str(f.size_bytes),
         },
     )
@@ -125,7 +135,7 @@ def delete_file(
     p: Principal = Depends(get_principal),
 ) -> OkResponse:
     f = db.get(File, file_id)
-    if not f or f.workspace_id != p.workspace.id:
+    if not f or f.workspace_id != p.workspace.id or not owned_storage_key(p.workspace.id, f.storage_key):
         raise HTTPException(status_code=404, detail="not found")
     storage = get_storage()
     storage.delete(f.storage_key)

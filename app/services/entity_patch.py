@@ -33,6 +33,7 @@ from app.models import (
     TaskStatus,
 )
 from app.services.custom_field_validate import validate_entity_data
+from app.services.deal_references import validate_deal_references
 from app.services.diffs import compute_changes
 from app.services.events import emit
 
@@ -67,6 +68,16 @@ def apply_deal_patch(
     ``validate_data_against_existing=False`` validates ``updates["data"]`` as
     the complete new object (used when the caller already merged it).
     """
+    try:
+        validate_deal_references(
+            db,
+            p.workspace.id,
+            updates.get("pipeline_id", d.pipeline_id),
+            updates.get("stage_id", d.stage_id),
+            updates,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     old_stage = d.stage_id
     old_status = d.status
     if "data" in updates and updates["data"] is not None:

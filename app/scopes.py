@@ -50,6 +50,7 @@ ACTIONS: tuple[str, ...] = ("read", "write", "delete")
 SPECIAL: tuple[str, ...] = (
     "email:send",
     "admin:keys",
+    "approvals:decide",
     "a2a:invoke",
     "a2a:admin",
 )

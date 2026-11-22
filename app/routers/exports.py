@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -11,6 +11,7 @@ from app.deps import Principal, require_role_and_scopes
 from app.models import MemberRole, Workspace
 from app.schemas import ImportRequest, ImportResponse
 from app.services.export import build_export
+from app.services.export_archive import build_archive, validate_download_grant
 from app.services.importer import apply_import
 
 router = APIRouter(tags=["export-import"])
@@ -73,4 +74,76 @@ def import_workspace(
         skipped=result.skipped,
         warnings=result.warnings,
         dry_run=req.dry_run,
+    )
+
+
+_ARCHIVE_PAGE = """<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Download Nakatomi workspace ZIP</title>
+<h1>Download workspace ZIP</h1>
+<p id="status" role="status"></p>
+<form method="post" action="/export/archive/download">
+  <input type="hidden" name="token" id="token">
+  <button type="submit" id="download" disabled>Download ZIP</button>
+</form>
+<script>
+  const token = location.hash.slice(1);
+  if (token) {
+    history.replaceState(null, "", location.pathname);
+    document.getElementById("token").value = token;
+    document.getElementById("download").disabled = false;
+  } else {
+    document.getElementById("status").textContent = "Ask your agent for a fresh download link.";
+  }
+</script>
+</html>
+"""
+
+
+@router.get("/export/archive", response_class=HTMLResponse, include_in_schema=False)
+def archive_landing() -> HTMLResponse:
+    return HTMLResponse(
+        _ARCHIVE_PAGE,
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY",
+        },
+    )
+
+
+@router.post("/export/archive/download", include_in_schema=False)
+def download_archive(token: str = Form(...), db: Session = Depends(get_db)) -> StreamingResponse:
+    claims = validate_download_grant(db, token)
+    if not claims:
+        raise HTTPException(403, "This export link is invalid or expired. Ask your agent for a fresh link.")
+    workspace = db.get(Workspace, claims["workspace"])
+    if not workspace:
+        raise HTTPException(404, "Workspace unavailable")
+    try:
+        archive = build_archive(
+            db,
+            workspace,
+            target=claims["target"],
+            include_files=claims["files"],
+            include_timeline=claims["timeline"],
+        )
+    except (OSError, ValueError):
+        raise HTTPException(409, "An attachment could not be exported. Try again without attachments.")
+    filename = f"nakatomi-{workspace.id}-{datetime.now(UTC).date().isoformat()}.zip"
+
+    def chunks():
+        with archive:
+            while chunk := archive.read(1024 * 1024):
+                yield chunk
+
+    return StreamingResponse(
+        chunks(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+            "Referrer-Policy": "no-referrer",
+        },
     )

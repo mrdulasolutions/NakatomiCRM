@@ -28,22 +28,6 @@ class _FakeResponse:
         self.text = text
 
 
-class _FakeClient:
-    """Drop-in for ``httpx.Client(...).__enter__()`` returning a stubbed ``post``."""
-
-    def __init__(self, response: _FakeResponse):
-        self._response = response
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        return False
-
-    def post(self, *_args, **_kwargs):
-        return self._response
-
-
 def test_creating_a_contact_enqueues_pending_delivery(client, workspace):
     h = workspace["headers"]
     _make_webhook(client, h)
@@ -69,8 +53,8 @@ def test_worker_marks_succeeded_on_2xx(client, workspace):
     _make_webhook(client, h)
     client.post("/contacts", headers=h, json={"first_name": "Ada"})
 
-    with patch("app.services.webhook_delivery.httpx.Client") as mock_client:
-        mock_client.return_value = _FakeClient(_FakeResponse(200, "ok"))
+    with patch("app.services.webhook_delivery.outgoing_request") as mock_client:
+        mock_client.return_value = _FakeResponse(200, "ok")
         n = webhook_delivery.process_pending_deliveries(limit=10)
     assert n == 1
 
@@ -92,8 +76,8 @@ def test_worker_retries_on_failure_and_marks_dead_after_max(client, workspace):
     client.post("/contacts", headers=h, json={"first_name": "Ada"})
 
     # First attempt: 500 → should stay pending with next_attempt_at in the future.
-    with patch("app.services.webhook_delivery.httpx.Client") as mock_client:
-        mock_client.return_value = _FakeClient(_FakeResponse(500, "boom"))
+    with patch("app.services.webhook_delivery.outgoing_request") as mock_client:
+        mock_client.return_value = _FakeResponse(500, "boom")
         webhook_delivery.process_pending_deliveries(limit=10)
 
     db = SessionLocal()
@@ -119,8 +103,8 @@ def test_worker_retries_on_failure_and_marks_dead_after_max(client, workspace):
             db.commit()
         finally:
             db.close()
-        with patch("app.services.webhook_delivery.httpx.Client") as mock_client:
-            mock_client.return_value = _FakeClient(_FakeResponse(500, "boom"))
+        with patch("app.services.webhook_delivery.outgoing_request") as mock_client:
+            mock_client.return_value = _FakeResponse(500, "boom")
             webhook_delivery.process_pending_deliveries(limit=10)
 
     db = SessionLocal()

@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
 from app.config import settings
@@ -48,14 +48,31 @@ class Storage(ABC):
             stream.close()
 
 
+def owned_storage_key(workspace_id: str, key: str) -> bool:
+    path = PurePosixPath(key)
+    return (
+        not path.is_absolute()
+        and len(path.parts) > 1
+        and path.parts[0] == workspace_id
+        and ".." not in path.parts
+        and "\\" not in key
+        and "\x00" not in key
+    )
+
+
 class LocalStorage(Storage):
     def __init__(self, root: str):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
-        safe = key.replace("..", "").lstrip("/")
-        p = self.root / safe
+        path = PurePosixPath(key)
+        if path.is_absolute() or not path.parts or ".." in path.parts or "\\" in key:
+            raise ValueError("Invalid storage key")
+        root = self.root.resolve()
+        p = (root / key).resolve()
+        if p == root or not p.is_relative_to(root):
+            raise ValueError("Storage key leaves the storage root")
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
 

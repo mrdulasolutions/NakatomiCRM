@@ -16,6 +16,9 @@ _LIMIT_PATHS = frozenset(
     {
         "/auth/login",
         "/auth/signup",
+        "/oauth/authorize",
+        "/oauth/register",
+        "/dashboard/session",
         "/bootstrap",
         "/welcome/signup",
     }
@@ -26,9 +29,6 @@ _lock = Lock()
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded:
-        return forwarded.split(",")[0].strip()
     if request.client:
         return request.client.host
     return "unknown"
@@ -62,7 +62,7 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         if path not in _LIMIT_PATHS:
             return await call_next(request)
 
-        allowed, retry_after = _check_auth_rate_limit(_client_ip(request), limit)
+        allowed, retry_after = _check_auth_rate_limit(f"{path}:{_client_ip(request)}", limit)
         if not allowed:
             return JSONResponse(
                 status_code=429,

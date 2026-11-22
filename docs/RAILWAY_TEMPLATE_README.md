@@ -1,6 +1,6 @@
 # Deploy and Host Nakatomi CRM on Railway
 
-Nakatomi is a **headless, agent-native CRM** (v1.0.8). REST + MCP + A2A + ACP on Postgres — built for Claude, ChatGPT, Cursor, and custom agent swarms.
+Nakatomi is a headless CRM for agents. It exposes REST, MCP, A2A, and ACP on PostgreSQL.
 
 ## About Hosting
 
@@ -8,7 +8,7 @@ This template provisions:
 
 - **nakatomi** — FastAPI app (Dockerfile), Alembic migrations on boot, healthcheck at `/health`
 - **Postgres** — managed database with `DATABASE_URL` linked automatically
-- **Volume** at `/app/data` for local file storage
+- **Nakatomi Files** Railway Bucket. Check the app's storage settings before storing attachments.
 - Auto-generated `SECRET_KEY` and production defaults
 
 Public URL: `https://railway.com/deploy/nakatomicrm`
@@ -42,16 +42,18 @@ Public URL: `https://railway.com/deploy/nakatomicrm`
 | `DATABASE_URL` | yes | Linked from Postgres |
 | `ENVIRONMENT` | yes | `production` |
 | `PUBLIC_BASE_URL` | recommended | Set to your Railway domain after first deploy |
-| `BOOTSTRAP_TOKEN` | recommended | Protect first-run `/` claim if the URL is public before you open it |
+| `BOOTSTRAP_TOKEN` | recommended | Set a unique token before exposing a fresh installation |
+| `DASHBOARD_ENABLED` | recommended | Set `false` on public deployments during staging and security validation |
+| `MEMORY_CONNECTORS` | optional | Leave empty on shared deployments pending isolation validation |
 | `API_KEY_RATE_LIMIT_PER_MINUTE` | optional | e.g. `120` in production |
 | `AUTH_RATE_LIMIT_PER_MINUTE` | optional | e.g. `30` for OAuth/login/bootstrap |
 | `OTEL_*` / `SSO_*` | no | Optional observability and human SSO |
 
-After deploy, open `/health` — expect `"version":"1.0.7"`. First visit to `/` shows the branded welcome flow (workspace + API key).
+After deploying, check `/health` and compare its version with the deployed release. Open `/` to set up your first workspace.
 
 ### Agent MCP (important)
 
-1. Create a workspace API key: `POST /workspace/api-keys` (role owner/admin, scopes `*`).
+1. Create a dedicated workspace API key with only the scopes the agent needs. Store it in the runtime’s secret store.
 2. Point your MCP client at **`https://YOUR-DOMAIN.up.railway.app/mcp`** (not the site root).
 3. Header: `Authorization: Bearer nk_…`
 

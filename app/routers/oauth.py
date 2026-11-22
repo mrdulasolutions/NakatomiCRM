@@ -10,27 +10,23 @@ Custom Connector" flow:
 - Token endpoint at ``POST /oauth/token`` (authorization_code + refresh_token)
 - Revocation at ``POST /oauth/revoke``
 
-Access tokens are stored as ``ApiKey`` rows (short-lived, scoped to the
-user's workspace membership role). Because ``ApiKey`` is what
-``get_principal`` already checks, the request-auth path needs no changes.
-
-We don't implement every RFC 6749 corner — notably no ``implicit`` grant
-(deprecated in 2.1), no ``password`` grant, no ``client_credentials``.
-MCP clients only ever need ``authorization_code`` + ``refresh_token``.
+Access and refresh tokens share a storage table and have separate validation
+paths. Delegated access is scoped to MCP and to the workspace consent grant.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qs, urlencode, urlsplit
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -41,9 +37,13 @@ from app.brand_pages import (
     render_oauth_complete,
     render_status_page,
 )
+from app.browser_sessions import browser_principal, public_origin, require_same_origin
 from app.db import get_db
+from app.deps import _looks_like_uuid
 from app.models import ApiKey, MemberRole, Membership, OAuthClient, OAuthCode, User, Workspace
-from app.security import generate_api_key, hash_api_key, verify_password
+from app.oauth_grants import locked_token as _locked_token
+from app.oauth_grants import oauth_metadata, oauth_scopes, revoke_grant
+from app.security import generate_api_key, verify_password
 
 router = APIRouter(tags=["oauth"])
 
@@ -74,11 +74,7 @@ def _hash_code(code: str) -> str:
 
 
 def _issuer(request: Request) -> str:
-    """Return the canonical public origin. Respects X-Forwarded-Proto/Host so
-    that deployments behind a proxy (Railway) advertise the right URL."""
-    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-    host = request.headers.get("x-forwarded-host", request.url.netloc)
-    return f"{proto}://{host}"
+    return public_origin(request)
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +92,7 @@ def authorization_server_metadata(request: Request) -> dict:
         "token_endpoint": f"{iss}/oauth/token",
         "revocation_endpoint": f"{iss}/oauth/revoke",
         "registration_endpoint": f"{iss}/oauth/register",
-        "scopes_supported": ["mcp"],
+        "scopes_supported": ["mcp", "mcp:write", "mcp:export"],
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "token_endpoint_auth_methods_supported": ["none"],
@@ -109,9 +105,9 @@ def _protected_resource_body(request: Request) -> dict:
     """RFC 9728 body — shared by base and /mcp path variants."""
     iss = _issuer(request)
     return {
-        "resource": iss,
+        "resource": f"{iss}/mcp",
         "authorization_servers": [iss],
-        "scopes_supported": ["mcp"],
+        "scopes_supported": ["mcp", "mcp:write", "mcp:export"],
         "bearer_methods_supported": ["header"],
     }
 
@@ -132,9 +128,30 @@ def protected_resource_metadata(request: Request) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _valid_redirect(uri: str) -> bool:
+    try:
+        url = urlsplit(uri)
+        return (
+            len(uri) <= 2048
+            and not re.search(r"[\x00-\x20\x7f\\]", uri)
+            and not url.fragment
+            and not url.username
+            and not url.password
+            and not {"code", "state", "error"}.intersection(parse_qs(url.query, keep_blank_values=True))
+            and (
+                url.scheme == "https"
+                and bool(url.hostname)
+                or url.scheme == "http"
+                and url.hostname in {"127.0.0.1", "::1", "localhost"}
+            )
+        )
+    except ValueError:
+        return False
+
+
 class RegisterRequest(BaseModel):
-    client_name: str | None = None
-    redirect_uris: list[str]
+    client_name: str | None = Field(default=None, max_length=255)
+    redirect_uris: list[str] = Field(max_length=10)
     grant_types: list[str] | None = None
     response_types: list[str] | None = None
     token_endpoint_auth_method: str | None = None
@@ -148,12 +165,20 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> dict:
     Public clients (no secret) are the norm for MCP: Claude Desktop, Cursor,
     ChatGPT Custom Connectors all rely on PKCE.
     """
-    if not req.redirect_uris:
-        raise HTTPException(status_code=400, detail="redirect_uris is required")
+    if req.token_endpoint_auth_method not in (None, "none"):
+        raise HTTPException(400, "Only public PKCE clients are supported")
+    if not req.redirect_uris or any(not _valid_redirect(uri) for uri in req.redirect_uris):
+        raise HTTPException(status_code=400, detail="Use HTTPS redirect URIs or HTTP loopback callbacks")
 
     grant_types = req.grant_types or ["authorization_code", "refresh_token"]
     response_types = req.response_types or ["code"]
     scopes = (req.scope or "mcp").split()
+    if (
+        not set(grant_types) <= {"authorization_code", "refresh_token"}
+        or response_types != ["code"]
+        or not set(scopes) <= {"mcp", "mcp:write", "mcp:export"}
+    ):
+        raise HTTPException(400, "Unsupported OAuth registration parameters")
 
     client = OAuthClient(
         name=req.client_name or "Unnamed MCP client",
@@ -230,22 +255,6 @@ def oauth_success_preview(
     )
 
 
-@router.get("/oauth/complete", response_class=HTMLResponse, include_in_schema=False)
-def oauth_complete(
-    client: str = Query("Application"),
-    ru: str = Query(..., description="Registered redirect_uri from the authorize step"),
-    to: str = Query(..., description="Full redirect URL including authorization code"),
-) -> HTMLResponse:
-    """Post-authorize interstitial — validates ``to`` then returns the user to the MCP client."""
-    if not to.startswith(ru):
-        return _oauth_error_page(
-            status_code=400,
-            headline="Invalid redirect",
-            message="The continuation URL does not match the registered redirect URI.",
-        )
-    return HTMLResponse(render_oauth_complete(client_name=client, continue_url=to))
-
-
 @router.get("/oauth/complete/preview", response_class=HTMLResponse, include_in_schema=False)
 def oauth_complete_preview() -> HTMLResponse:
     return HTMLResponse(
@@ -306,11 +315,14 @@ def _render_login(
     code_challenge: str,
     code_challenge_method: str,
     email: str = "",
+    resource: str = "",
+    signed_in: bool = False,
+    sso_links: str = "",
     error: str | None = None,
     workspaces: list[Workspace] | None = None,
 ) -> str:
     ws_html = ""
-    if workspaces and len(workspaces) > 1:
+    if workspaces:
         options = "\n".join(
             f'<option value="{esc(ws.id)}">{esc(ws.name)} ({esc(ws.slug)})</option>' for ws in workspaces
         )
@@ -328,10 +340,37 @@ def _render_login(
         email=email,
         error=error,
         workspace_select_html=ws_html,
+        resource=resource,
+        signed_in=signed_in,
+        sso_links=sso_links,
     )
 
 
 # ---------------------------------------------------------------------------
+def _workspaces(db: Session, user_id: str) -> list[Workspace]:
+    return list(
+        db.scalars(
+            select(Workspace)
+            .join(Membership)
+            .where(Membership.user_id == user_id)
+            .order_by(Workspace.name, Workspace.id)
+        )
+    )
+
+
+def _validate_request(request, client, response_type, scope, challenge, method, resource) -> str:
+    if response_type != "code" or method != "S256" or not re.fullmatch(r"[A-Za-z0-9_-]{43}", challenge):
+        raise HTTPException(400, "Authorization code with PKCE S256 required")
+    if not scope.split() or not set(scope.split()) <= (
+        set(client.scopes) & {"mcp", "mcp:write", "mcp:export"}
+    ):
+        raise HTTPException(400, "Invalid scope")
+    expected = f"{_issuer(request)}/mcp"
+    if resource and resource != expected:
+        raise HTTPException(400, "Invalid resource")
+    return expected
+
+
 # Authorization endpoint (login + consent)
 # ---------------------------------------------------------------------------
 
@@ -346,6 +385,7 @@ def authorize_get(
     scope: str = Query("mcp"),
     code_challenge: str = Query(...),
     code_challenge_method: str = Query("S256"),
+    resource: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Render the login form. The browser lands here after the MCP client
@@ -363,8 +403,8 @@ def authorize_get(
             message="Use code_challenge_method=S256 with your MCP client.",
         )
 
-    client = db.get(OAuthClient, client_id)
-    if not client or redirect_uri not in client.redirect_uris:
+    client = db.get(OAuthClient, client_id) if _looks_like_uuid(client_id) else None
+    if not client or redirect_uri not in client.redirect_uris or not _valid_redirect(redirect_uri):
         return _oauth_error_page(
             status_code=400,
             headline="Unknown client",
@@ -372,6 +412,22 @@ def authorize_get(
             detail="Register the connector via POST /oauth/register or check your MCP client settings.",
         )
 
+    resource = _validate_request(
+        request, client, response_type, scope, code_challenge, code_challenge_method, resource
+    )
+    browser = browser_principal(request, db)
+    workspaces = _workspaces(db, browser.user.id) if browser and browser.user else None
+    sso_links = ""
+    if not browser:
+        from app.routers.sso import _enabled_providers
+
+        return_to = f"/oauth/authorize?{request.url.query}"
+        params = esc(urlencode({"dashboard": "true", "return_to": return_to}))
+        sso_links = " ".join(
+            f'<a href="/auth/sso/{provider}?{params}">Continue with {label}</a>'
+            for provider, label in (("google", "Google"), ("github", "GitHub"))
+            if _enabled_providers()[provider]
+        )
     return HTMLResponse(
         _render_login(
             client=client,
@@ -381,7 +437,12 @@ def authorize_get(
             scope=scope,
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
-        )
+            resource=resource,
+            signed_in=browser is not None,
+            sso_links=sso_links,
+            workspaces=workspaces,
+        ),
+        headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"},
     )
 
 
@@ -395,18 +456,31 @@ def authorize_post(
     scope: str = Form("mcp"),
     code_challenge: str = Form(...),
     code_challenge_method: str = Form("S256"),
-    email: str = Form(...),
-    password: str = Form(...),
+    resource: str | None = Form(None),
+    email: str = Form(""),
+    password: str = Form(""),
     workspace_id: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Validate credentials, issue a short-lived code, redirect back."""
-    client = db.get(OAuthClient, client_id)
-    if not client or redirect_uri not in client.redirect_uris:
+    client = db.get(OAuthClient, client_id) if _looks_like_uuid(client_id) else None
+    if not client or redirect_uri not in client.redirect_uris or not _valid_redirect(redirect_uri):
         raise HTTPException(status_code=400, detail="unknown client_id or redirect_uri not registered")
 
-    user = db.scalar(select(User).where(User.email == email.lower()))
-    if not user or not user.is_active or not verify_password(password, user.password_hash):
+    resource = _validate_request(
+        request, client, response_type, scope, code_challenge, code_challenge_method, resource
+    )
+    browser = browser_principal(request, db)
+    if browser:
+        require_same_origin(request)
+        user = browser.user
+    else:
+        user = db.scalar(select(User).where(User.email == email.lower()))
+    if (
+        not user
+        or not user.is_active
+        or (not browser and (not user.password_hash or not verify_password(password, user.password_hash)))
+    ):
         return HTMLResponse(
             _render_login(
                 client=client,
@@ -417,6 +491,8 @@ def authorize_post(
                 code_challenge=code_challenge,
                 code_challenge_method=code_challenge_method,
                 email=email,
+                resource=resource,
+                signed_in=browser is not None,
                 error="invalid email or password",
             ),
             status_code=401,
@@ -434,6 +510,8 @@ def authorize_post(
                 code_challenge=code_challenge,
                 code_challenge_method=code_challenge_method,
                 email=email,
+                resource=resource,
+                signed_in=browser is not None,
                 error="no workspaces — sign up first",
             ),
             status_code=403,
@@ -459,6 +537,8 @@ def authorize_post(
                 code_challenge=code_challenge,
                 code_challenge_method=code_challenge_method,
                 email=email,
+                resource=resource,
+                signed_in=browser is not None,
                 error="pick a workspace to authorize",
                 workspaces=[w for w in ws_rows if w is not None],
             ),
@@ -473,6 +553,7 @@ def authorize_post(
             user_id=user.id,
             workspace_id=chosen_ws_id,
             redirect_uri=redirect_uri,
+            resource=resource,
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
             scope=scope,
@@ -481,16 +562,16 @@ def authorize_post(
     )
     db.commit()
 
-    sep = "&" if "?" in redirect_uri else "?"
-    target = f"{redirect_uri}{sep}code={code}"
+    target = urlsplit(redirect_uri)
+    params = {"code": code}
     if state:
-        target += f"&state={state}"
-    complete_url = (
-        f"/oauth/complete?client={quote(client.name)}"
-        f"&ru={quote(redirect_uri, safe='')}"
-        f"&to={quote(target, safe='')}"
+        params["state"] = state
+    query = "&".join(filter(None, (target.query, urlencode(params))))
+    return RedirectResponse(
+        target._replace(query=query).geturl(),
+        status_code=302,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
-    return RedirectResponse(url=complete_url, status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -498,36 +579,53 @@ def authorize_post(
 # ---------------------------------------------------------------------------
 
 
+def _token_error(error: str, description: str) -> JSONResponse:
+    return JSONResponse(
+        {"error": error, "error_description": description, "detail": description},
+        status_code=400,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
 @router.post("/oauth/token")
 def token(
-    grant_type: str = Form(...),
+    request: Request,
+    grant_type: str | None = Form(None),
     code: str | None = Form(None),
     redirect_uri: str | None = Form(None),
     client_id: str | None = Form(None),
     code_verifier: str | None = Form(None),
     refresh_token: str | None = Form(None),
+    resource: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Exchange a code for tokens, or refresh an access token."""
+    if not grant_type:
+        return _token_error("invalid_request", "grant_type is required")
     if grant_type == "authorization_code":
         if not (code and redirect_uri and client_id and code_verifier):
-            raise HTTPException(
-                status_code=400, detail="missing code / redirect_uri / client_id / code_verifier"
+            return _token_error(
+                "invalid_request", "code, redirect_uri, client_id and code_verifier are required"
             )
-        row = db.get(OAuthCode, _hash_code(code))
+        row = db.get(OAuthCode, _hash_code(code), with_for_update=True)
         if not row:
-            raise HTTPException(status_code=400, detail="invalid or expired code")
+            return _token_error("invalid_grant", "Invalid or expired code")
         if row.used_at is not None:
-            raise HTTPException(status_code=400, detail="code already used")
+            return _token_error("invalid_grant", "Code already used")
         if row.expires_at < datetime.now(UTC):
-            raise HTTPException(status_code=400, detail="code expired")
+            return _token_error("invalid_grant", "Code expired")
         if row.client_id != client_id:
-            raise HTTPException(status_code=400, detail="client_id mismatch")
+            return _token_error("invalid_grant", "Client mismatch")
+        expected_resource = row.resource or f"{_issuer(request)}/mcp"
+        if resource and resource != expected_resource:
+            return _token_error("invalid_target", "Invalid resource")
         if row.redirect_uri != redirect_uri:
-            raise HTTPException(status_code=400, detail="redirect_uri mismatch")
+            return _token_error("invalid_grant", "Redirect URI mismatch")
         # PKCE: S256(code_verifier) must equal the stored challenge.
-        if _sha256_b64url(code_verifier) != row.code_challenge:
-            raise HTTPException(status_code=400, detail="PKCE verification failed")
+        if not re.fullmatch(r"[A-Za-z0-9._~-]{43,128}", code_verifier) or not secrets.compare_digest(
+            _sha256_b64url(code_verifier), row.code_challenge
+        ):
+            return _token_error("invalid_grant", "PKCE verification failed")
 
         row.used_at = datetime.now(UTC)
 
@@ -537,8 +635,9 @@ def token(
                 Membership.workspace_id == row.workspace_id,
             )
         )
-        if not mem:
-            raise HTTPException(status_code=403, detail="user no longer a member")
+        user = db.get(User, row.user_id)
+        if not mem or not user or not user.is_active:
+            return _token_error("invalid_grant", "Workspace membership required")
 
         access, refresh = _issue_tokens(
             db,
@@ -547,33 +646,48 @@ def token(
             role=mem.role,
             client_id=row.client_id,
             scope=row.scope,
+            resource=expected_resource,
+            grant_id=str(uuid4()),
         )
         db.commit()
         return _token_response(access, refresh, row.scope)
 
     if grant_type == "refresh_token":
         if not refresh_token:
-            raise HTTPException(status_code=400, detail="refresh_token is required")
-        key = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(refresh_token)))
-        if not key or key.revoked_at is not None:
-            raise HTTPException(status_code=400, detail="invalid refresh_token")
-        oauth_data = key.data.get("oauth") if isinstance(key.data, dict) else None
-        if not oauth_data or oauth_data.get("kind") != "refresh":
-            raise HTTPException(status_code=400, detail="not a refresh token")
-        # Swap: rotate the refresh token, mint a fresh access token.
+            return _token_error("invalid_request", "refresh_token is required")
+        key = _locked_token(db, refresh_token)
+        if not key or key.revoked_at or not key.expires_at or key.expires_at <= datetime.now(UTC):
+            return _token_error("invalid_grant", "Invalid refresh token")
+        grant = oauth_metadata(key)
+        if grant.get("kind") != "refresh" or client_id != grant.get("client_id"):
+            return _token_error("invalid_grant", "Invalid refresh token")
+        expected_resource = grant.get("resource") or f"{_issuer(request)}/mcp"
+        if resource and resource != expected_resource:
+            return _token_error("invalid_target", "Invalid resource")
+        user = db.get(User, key.user_id) if key.user_id else None
+        mem = db.scalar(
+            select(Membership).where(
+                Membership.user_id == key.user_id, Membership.workspace_id == key.workspace_id
+            )
+        )
+        if not user or not user.is_active or not mem:
+            return _token_error("invalid_grant", "Invalid grant")
         key.revoked_at = datetime.now(UTC)
+        scope = grant.get("scope", "mcp")
         access, refresh = _issue_tokens(
             db,
-            user_id=key.user_id,
+            user_id=user.id,
             workspace_id=key.workspace_id,
-            role=key.role,
-            client_id=oauth_data.get("client_id", ""),
-            scope=oauth_data.get("scope", "mcp"),
+            role=mem.role,
+            client_id=client_id,
+            scope=scope,
+            resource=expected_resource,
+            grant_id=grant.get("grant_id") or str(uuid4()),
         )
         db.commit()
-        return _token_response(access, refresh, oauth_data.get("scope", "mcp"))
+        return _token_response(access, refresh, scope)
 
-    raise HTTPException(status_code=400, detail=f"unsupported grant_type: {grant_type}")
+    return _token_error("unsupported_grant_type", "Unsupported grant type")
 
 
 def _issue_tokens(
@@ -584,17 +698,19 @@ def _issue_tokens(
     role: MemberRole,
     client_id: str,
     scope: str,
+    resource: str,
+    grant_id: str,
 ) -> tuple[str, str]:
     """Mint an access token (1h) and a refresh token (30d) as ApiKey rows.
 
-    Access tokens ride the existing ``get_principal`` path — same bearer
-    format as manually-minted keys. Refresh tokens carry ``data.oauth.kind =
-    "refresh"`` so we distinguish them at exchange time.
+    Both rows record grant ownership and resource. Only the access row is
+    accepted by MCP bearer authentication.
     """
     now = datetime.now(UTC)
     access_full, access_prefix, access_hash = generate_api_key()
     refresh_full, refresh_prefix, refresh_hash = generate_api_key()
 
+    metadata = {"client_id": client_id, "scope": scope, "resource": resource, "grant_id": grant_id}
     db.add(
         ApiKey(
             workspace_id=workspace_id,
@@ -604,7 +720,8 @@ def _issue_tokens(
             key_hash=access_hash,
             role=role,
             expires_at=now + _ACCESS_TOKEN_TTL,
-            scopes=["*"],
+            scopes=oauth_scopes(scope, role),
+            data={"oauth": {**metadata, "kind": "access"}},
         )
     )
     db.add(
@@ -616,26 +733,24 @@ def _issue_tokens(
             key_hash=refresh_hash,
             role=role,
             expires_at=now + _REFRESH_TOKEN_TTL,
-            scopes=["*"],
+            scopes=[],
+            data={"oauth": {**metadata, "kind": "refresh"}},
         )
     )
-    # Set `data` on the refresh-token row so we can identify it at renewal.
-    db.flush()
-    refresh_row = db.scalar(select(ApiKey).where(ApiKey.key_hash == refresh_hash))
-    assert refresh_row is not None, "refresh token row vanished immediately after flush"
-    refresh_row.data = {"oauth": {"kind": "refresh", "client_id": client_id, "scope": scope}}
-
     return access_full, refresh_full
 
 
-def _token_response(access: str, refresh: str, scope: str) -> dict[str, Any]:
-    return {
-        "access_token": access,
-        "token_type": "Bearer",
-        "expires_in": int(_ACCESS_TOKEN_TTL.total_seconds()),
-        "refresh_token": refresh,
-        "scope": scope,
-    }
+def _token_response(access: str, refresh: str, scope: str) -> JSONResponse:
+    return JSONResponse(
+        {
+            "access_token": access,
+            "token_type": "Bearer",
+            "expires_in": int(_ACCESS_TOKEN_TTL.total_seconds()),
+            "refresh_token": refresh,
+            "scope": scope,
+        },
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -644,11 +759,11 @@ def _token_response(access: str, refresh: str, scope: str) -> dict[str, Any]:
 
 
 @router.post("/oauth/revoke", status_code=200)
-def revoke(token: str = Form(...), db: Session = Depends(get_db)) -> JSONResponse:
-    """RFC 7009 — accept any token type, mark it revoked. Always 200 to
-    avoid leaking token-existence information."""
-    row = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(token)))
-    if row and row.revoked_at is None:
-        row.revoked_at = datetime.now(UTC)
+def revoke(
+    token: str = Form(...), client_id: str | None = Form(None), db: Session = Depends(get_db)
+) -> JSONResponse:
+    row = _locked_token(db, token)
+    if row and oauth_metadata(row).get("client_id") == client_id and oauth_metadata(row):
+        revoke_grant(db, row)
         db.commit()
     return JSONResponse({"revoked": True})

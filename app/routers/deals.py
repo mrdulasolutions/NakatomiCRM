@@ -7,7 +7,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
+from app.deps import (
+    Pagination,
+    Principal,
+    _looks_like_uuid,
+    enforce_resource_scope,
+    get_pagination,
+    get_principal,
+)
 from app.models import Deal, DealParticipant, DealParticipantRole, DealStatus, EntityType, Pipeline, Stage
 from app.schemas import (
     DealIn,
@@ -18,6 +25,7 @@ from app.schemas import (
     OkResponse,
     Page,
 )
+from app.services.deal_references import validate_deal_references
 from app.services.entity_patch import apply_deal_patch
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
@@ -102,6 +110,8 @@ def create_deal(
                 detail="no pipelines configured; create one via POST /pipelines first",
             )
         pipeline_id = pipe.id
+    if not _looks_like_uuid(pipeline_id):
+        raise HTTPException(422, "Invalid pipeline")
     if not stage_id:
         stage = db.scalar(
             select(Stage).where(Stage.pipeline_id == pipeline_id).order_by(Stage.position).limit(1)
@@ -111,6 +121,10 @@ def create_deal(
         stage_id = stage.id
 
     body = payload.model_dump()
+    try:
+        validate_deal_references(db, p.workspace.id, pipeline_id, stage_id, body)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     body["pipeline_id"] = pipeline_id
     body["stage_id"] = stage_id
     d = Deal(workspace_id=p.workspace.id, **body)

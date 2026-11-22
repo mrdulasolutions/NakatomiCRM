@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -11,9 +12,10 @@ from typing import Any
 
 from fastapi import Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.browser_sessions import browser_principal, public_origin
 from app.config import settings
 from app.db import get_db
 from app.models import (
@@ -24,8 +26,23 @@ from app.models import (
     User,
     Workspace,
 )
+from app.oauth_grants import bearer_key
 from app.scopes import default_scopes_for_role, has_scope, missing_scopes, normalize_scopes
-from app.security import decode_access_token, hash_api_key
+from app.security import decode_access_token
+
+_DASHBOARD_READ_PATHS = {
+    "/workspace",
+    "/timeline",
+    "/contacts",
+    "/companies",
+    "/deals",
+    "/tasks",
+    "/webhooks",
+    "/webhooks/{webhook_id}/deliveries",
+    "/pipelines",
+    "/memory/connectors",
+    "/memory/links",
+}
 
 
 @dataclass
@@ -137,23 +154,33 @@ def get_principal(
     """
     token = _extract_bearer(authorization)
     if not token:
+        if (
+            settings.DASHBOARD_ENABLED
+            and authorization is None
+            and request.method == "GET"
+            and getattr(request.scope.get("route"), "path", None) in _DASHBOARD_READ_PATHS
+            and request.headers.get("x-nakatomi-dashboard") == "1"
+        ):
+            origin = request.headers.get("origin")
+            if origin and origin != public_origin(request):
+                raise _forbidden("same-origin request required")
+            principal = browser_principal(request, db)
+            if principal:
+                return principal
         raise _auth_error("missing bearer token")
 
     # API key path
     if token.startswith("nk_"):
-        digest = hash_api_key(token)
-        key = db.scalar(select(ApiKey).where(ApiKey.key_hash == digest))
-        if not key or key.revoked_at is not None:
+        resolved = bearer_key(db, token)
+        if not resolved:
             raise _auth_error("invalid api key")
-        if key.expires_at and key.expires_at < datetime.now(UTC):
-            raise _auth_error("api key expired")
+        key, role, scopes = resolved
         _enforce_rate_limit(db, key)
         ws = db.get(Workspace, key.workspace_id)
         if not ws:
             raise _auth_error("workspace not found")
         user = db.get(User, key.user_id) if key.user_id else None
-        scopes = normalize_scopes(key.scopes)
-        return Principal(user=user, api_key=key, workspace=ws, role=key.role, scopes=scopes)
+        return Principal(user=user, api_key=key, workspace=ws, role=role, scopes=normalize_scopes(scopes))
 
     # User JWT path
     payload = decode_access_token(token)
@@ -278,6 +305,13 @@ def get_pagination(
 
 
 # ---------- Idempotency ----------
+def principal_idempotency_key(identity: str, role: MemberRole, scopes: list | None, key: str) -> str:
+    values = [identity, role.value, normalize_scopes(scopes), key]
+    return hmac.new(
+        settings.SECRET_KEY.encode(), json.dumps(values, separators=(",", ":")).encode(), "sha256"
+    ).hexdigest()
+
+
 def request_fingerprint(method: str, path: str, body: bytes) -> str:
     h = hashlib.sha256()
     h.update(method.encode())
@@ -321,6 +355,8 @@ def save_idempotency(
     body_bytes: bytes,
     status_code: int,
     response: dict,
+    *,
+    commit: bool = True,
 ) -> None:
     # Already stored (concurrent double-save) — ignore.
     existing = db.scalar(
@@ -341,6 +377,8 @@ def save_idempotency(
         response_body=response,
     )
     db.add(rec)
+    if not commit:
+        return
     try:
         db.commit()
     except Exception:  # noqa: BLE001 — unique race
@@ -431,6 +469,11 @@ def mcp_idempotency(
     if not idempotency_key:
         return None, (lambda *_a, **_k: None)
 
+    idempotency_key = principal_idempotency_key(
+        principal.api_key_id or principal.user_id or "", principal.role, principal.scopes, idempotency_key
+    )
+    if not db.scalar(select(func.pg_try_advisory_xact_lock(func.hashtextextended(idempotency_key, 0)))):
+        raise HTTPException(409, "Request with this key is in progress")
     path = f"mcp:{tool}"
     body_bytes = json_bytes(args)
     existing = check_idempotency(db, principal.workspace.id, idempotency_key, "MCP", path, body_bytes)
@@ -447,6 +490,7 @@ def mcp_idempotency(
             body_bytes,
             status_code,
             body,
+            commit=False,
         )
 
     return None, _save

@@ -109,7 +109,7 @@ def test_calendar_sync_creates_meeting_activity(client, workspace, monkeypatch):
         text = _SAMPLE_ICS
         headers = {"ETag": '"deadbeef"'}
 
-    with patch("app.services.calendar_io.httpx.get", return_value=_Resp()):
+    with patch("app.services.calendar_io.outgoing_request", return_value=_Resp()):
         r = client.post(f"/calendar/feeds/{feed_id}/sync", headers=h)
     assert r.status_code == 200
     assert r.json()["events_touched"] == 2
@@ -204,7 +204,7 @@ def test_legacy_plaintext_smtp_password_still_works(monkeypatch):
         smtp_password="legacy-plain",
         smtp_port=587,
     )
-    with patch("app.services.email_io.smtplib.SMTP") as smtp_cls:
+    with patch("app.services.email_io._PinnedSMTP") as smtp_cls:
         inst = smtp_cls.return_value.__enter__.return_value
         send_email(cfg, to=["a@example.com"], cc=[], bcc=[], subject="Hi", body="yo")
         inst.login.assert_called_once_with("me@example.com", "legacy-plain")
