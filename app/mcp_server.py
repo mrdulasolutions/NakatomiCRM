@@ -2820,7 +2820,7 @@ def list_custom_fields(
                 et = EntityType(entity_type)
             except ValueError as exc:
                 raise RuntimeError(
-                    f"unknown entity_type {entity_type!r}; " f"use one of {[e.value for e in EntityType]}"
+                    f"unknown entity_type {entity_type!r}; use one of {[e.value for e in EntityType]}"
                 ) from exc
             q = q.where(CustomFieldDefinition.entity_type == et)
         q = q.order_by(CustomFieldDefinition.entity_type, CustomFieldDefinition.name)

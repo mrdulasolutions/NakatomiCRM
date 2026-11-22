@@ -1,14 +1,14 @@
 # Runtime — pin reasons in comments (P0.1 hygiene).
 # Bump deliberately; CI installs a clean venv from this file.
 
-# API framework + ASGI server (0.140.x pulls starlette with security fixes)
-fastapi==0.140.13
-uvicorn[standard]==0.34.0
+# API framework + ASGI server
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
 
 # DB + migrations (Postgres-only; JSONB / pg_trgm required)
 sqlalchemy==2.0.54
-psycopg[binary]==3.2.13   # 3.2.3 vanished from PyPI; binary wheels for 3.12
-alembic==1.14.0
+psycopg[binary]==3.3.6
+alembic==1.20.0
 
 # Settings + validation
 pydantic==2.13.5
@@ -43,7 +43,7 @@ python-dotenv==1.2.3
 # opentelemetry-instrumentation-sqlalchemy
 
 # --- dev / test ---
-pytest==9.0.3
-pytest-cov==6.0.0
-ruff==0.8.4
-mypy==1.13.0
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.16.9
+mypy==2.3.1

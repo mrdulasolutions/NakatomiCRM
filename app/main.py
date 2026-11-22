@@ -500,7 +500,7 @@ class _McpTrailingSlashFix:
 
 
 # Keep the public name ``app`` for uvicorn ``app.main:app``.
-app = _McpTrailingSlashFix(app)  # type: ignore[assignment]
+app = _McpTrailingSlashFix(app)
 
 # Root path "/" is owned by app/routers/welcome.py — fresh installs get
 # the welcome page, initialized installs get the JSON discovery doc.

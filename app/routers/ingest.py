@@ -71,8 +71,7 @@ def ingest(
                 IngestDiagnostic(
                     level="info",
                     message=(
-                        f"promoted to async job (>{INGEST_SYNC_MAX_RECORDS} records); "
-                        f"poll GET /jobs/{job.id}"
+                        f"promoted to async job (>{INGEST_SYNC_MAX_RECORDS} records); poll GET /jobs/{job.id}"
                     ),
                 )
             ],
