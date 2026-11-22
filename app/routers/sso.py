@@ -22,9 +22,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
-from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -63,7 +63,7 @@ def _sign_state(provider: str, nonce: str) -> str:
 def _verify_state(state: str, provider: str) -> None:
     try:
         data = jwt.decode(state, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-    except JWTError as exc:
+    except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=400, detail="invalid SSO state") from exc
     if data.get("p") != provider or not data.get("n"):
         raise HTTPException(status_code=400, detail="SSO state provider mismatch")
