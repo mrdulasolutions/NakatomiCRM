@@ -96,6 +96,7 @@ feed already has every mutation with actor and payload. Use it.
 
 - **Log a call:** `get_contact → log_activity(kind="call", subject, body, entity_type=contact, entity_id) → add_note(if transcript) → create_task(if follow-up)`
 - **Move a deal:** `search_deals` / `get_deal` → `list_pipelines` → `move_deal_stage(deal_id, stage_slug)`
+- **Edit a deal:** `get_deal` → `update_deal(deal_id, amount=…, data={"next_step": None, "loss_reason": "…"})` (`data` merges; `null` removes a key; `merge_data=false` replaces)
 - **Acme deal status:** `search_companies(query="Acme")` → `search_deals(query="…", company_id=…)` → `get_deal(id)` or `entity_context("deal", …)`
 - **Onboard a company:** `create_company → for each contact: create_contact(+ company_id) → relate(contact, works_at, company)`
 - **Morning review:** `timeline(workspace, since=yesterday) → list_tasks(status=open, due_before=today+1d)`

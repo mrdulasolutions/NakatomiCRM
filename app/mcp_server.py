@@ -15,14 +15,18 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import BackgroundTasks, HTTPException
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, BaseModel, ValidationError
 from sqlalchemy import func, or_, select
 
 from app.config import settings
@@ -56,6 +60,15 @@ from app.models import (
 )
 from app.scopes import has_scope, missing_scopes, normalize_scopes
 from app.security import hash_api_key
+from app.services.entity_patch import (
+    apply_deal_patch,
+    apply_lead_patch,
+    apply_line_item_patch,
+    apply_note_patch,
+    apply_product_patch,
+    apply_task_patch,
+    merge_json_data,
+)
 from app.services.ingest import adapters as _ingest_adapters  # noqa: F401  — registers adapters
 from app.services.ingest.base import run_ingest
 from app.services.memory import enabled_connectors, get_connector
@@ -194,6 +207,100 @@ def _record_event(
             payload=payload,
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# Update-tool helpers — shared by update_deal / update_task / update_note /
+# update_product / update_lead / update_line_item. The actual mutation, event
+# emission (timeline + audit + webhooks) and policy checks live in
+# app.services.entity_patch so REST PATCH and MCP stay in lockstep.
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _http_errors_as_tool_errors() -> Iterator[None]:
+    """Translate HTTPException raised by shared services into MCP tool errors."""
+    try:
+        yield
+    except HTTPException as exc:
+        raise RuntimeError(str(exc.detail)) from exc
+
+
+def _run_background(background: BackgroundTasks) -> None:
+    """Run post-commit side effects (memory-connector mirroring) off the request path.
+
+    Webhook deliveries are already enqueued as durable DB rows by ``emit`` and
+    committed with the change; these tasks are best-effort extras.
+    """
+    if not background.tasks:
+        return
+
+    def _runner() -> None:
+        for task in background.tasks:
+            try:
+                task.func(*task.args, **task.kwargs)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("mcp background task failed: %s", exc)
+
+    threading.Thread(target=_runner, name="mcp-post-commit", daemon=True).start()
+
+
+def _require_member_role(principal: Principal) -> None:
+    """Mirror REST ``require_role(owner, admin, member)`` on product/line-item writes."""
+    from app.models import MemberRole
+
+    role = principal.role
+    role_v = role.value if hasattr(role, "value") else str(role)
+    allowed = {MemberRole.owner.value, MemberRole.admin.value, MemberRole.member.value}
+    if role_v not in allowed:
+        raise RuntimeError(
+            f"requires one of: {sorted(allowed)}; suggestion: use an API key with role owner|admin|member"
+        )
+
+
+def _build_patch(
+    schema_cls: type[BaseModel],
+    row: Any,
+    fields: dict[str, Any],
+    *,
+    data: dict | None = None,
+    merge_data: bool = True,
+    clear_fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """Turn explicit MCP tool kwargs into a validated REST-style PATCH dict.
+
+    - ``None`` kwargs mean "leave unchanged" (partial update).
+    - ``clear_fields`` lists nullable columns to set to ``null`` explicitly.
+    - ``data`` is shallow-merged into the row's existing ``data`` (a ``None``
+      value removes that key) unless ``merge_data=False``, which replaces it.
+    - The result is validated through the same Pydantic ``*Patch`` schema the
+      REST route uses.
+    """
+    raw: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+    clearable = sorted(
+        name
+        for name in schema_cls.model_fields
+        if name != "data"
+        and name in row.__table__.columns
+        and row.__table__.columns[name].nullable
+        and name in fields
+    )
+    for name in clear_fields or []:
+        if name not in clearable:
+            raise RuntimeError(f"cannot clear '{name}'; clearable fields: {clearable}")
+        if name in raw:
+            raise RuntimeError(f"'{name}' is both set and listed in clear_fields")
+        raw[name] = None
+    if data is not None:
+        raw["data"] = merge_json_data(row.data, data, merge=merge_data)
+    try:
+        validated = schema_cls.model_validate(raw)
+    except ValidationError as exc:
+        raise RuntimeError(f"invalid update: {exc.errors(include_url=False)}") from exc
+    updates = validated.model_dump(exclude_unset=True)
+    if not updates:
+        raise RuntimeError("no fields to update; pass at least one field, data, or clear_fields")
+    return updates
 
 
 # ---------------------------------------------------------------------------
@@ -795,6 +902,73 @@ def move_deal_stage(ctx: Context, deal_id: str, stage_slug: str) -> dict:
         db.close()
 
 
+@mcp.tool()
+def update_deal(
+    ctx: Context,
+    deal_id: str,
+    name: str | None = None,
+    amount: float | None = None,
+    currency: str | None = None,
+    expected_close_date: datetime | None = None,
+    primary_contact_id: str | None = None,
+    company_id: str | None = None,
+    owner_user_id: str | None = None,
+    tags: list[str] | None = None,
+    data: dict | None = None,
+    merge_data: bool = True,
+    status: str | None = None,
+    external_id: str | None = None,
+    clear_fields: list[str] | None = None,
+) -> dict:
+    """Partially update a deal (REST parity: PATCH /deals/{id}). Scopes: deals:write.
+
+    Only the fields you pass change. ``data`` (custom fields such as next_step,
+    next_step_date, loss_reason) is merged into the existing object by default;
+    set a key to null to remove it, or pass ``merge_data=false`` to replace the
+    whole object. ``tags`` replaces the tag list. To null out a nullable field
+    (amount, expected_close_date, primary_contact_id, company_id, owner_user_id,
+    external_id) list it in ``clear_fields``. ``status`` (open|won|lost) mirrors
+    REST and does not move the stage — use ``move_deal_stage`` / ``advance_deal``
+    for pipeline moves. Emits deal.updated (+ deal.won/deal.lost on status change).
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "deals:write")
+        d = db.get(Deal, deal_id)
+        if not d or d.workspace_id != p.workspace.id:
+            raise RuntimeError("not found")
+        from app.schemas import DealPatch
+
+        updates = _build_patch(
+            DealPatch,
+            d,
+            {
+                "name": name,
+                "amount": amount,
+                "currency": currency,
+                "expected_close_date": expected_close_date,
+                "primary_contact_id": primary_contact_id,
+                "company_id": company_id,
+                "owner_user_id": owner_user_id,
+                "tags": tags,
+                "status": status,
+                "external_id": external_id,
+            },
+            data=data,
+            merge_data=merge_data,
+            clear_fields=clear_fields,
+        )
+        background = BackgroundTasks()
+        with _http_errors_as_tool_errors():
+            apply_deal_patch(db, p, d, updates, background=background, validate_data_against_existing=False)
+        db.commit()
+        db.refresh(d)
+        _run_background(background)
+        return _serialize(d)
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Activity / Note / Task tools
 # ---------------------------------------------------------------------------
@@ -869,6 +1043,42 @@ def add_note(ctx: Context, entity_type: str, entity_id: str, body: str, data: di
         )
         db.commit()
         db.refresh(n)
+        return _serialize(n)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def update_note(
+    ctx: Context,
+    note_id: str,
+    body: str | None = None,
+    data: dict | None = None,
+    merge_data: bool = True,
+) -> dict:
+    """Edit a note's markdown body and/or ``data`` (REST parity: PATCH /notes/{id}). Scopes: notes:write.
+
+    ``data`` is merged into the existing object by default (null value removes a
+    key); ``merge_data=false`` replaces it. Emits note.updated.
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "notes:write")
+        n = db.get(Note, note_id)
+        if not n or n.workspace_id != p.workspace.id:
+            raise RuntimeError("not found")
+        updates: dict[str, Any] = {}
+        if body is not None:
+            updates["body"] = body
+        if data is not None:
+            updates["data"] = merge_json_data(n.data, data, merge=merge_data)
+        if not updates:
+            raise RuntimeError("no fields to update; pass body and/or data")
+        background = BackgroundTasks()
+        apply_note_patch(db, p, n, updates, background=background)
+        db.commit()
+        db.refresh(n)
+        _run_background(background)
         return _serialize(n)
     finally:
         db.close()
@@ -970,6 +1180,57 @@ def complete_task(ctx: Context, task_id: str) -> dict:
         )
         db.commit()
         db.refresh(t)
+        return _serialize(t)
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def update_task(
+    ctx: Context,
+    task_id: str,
+    title: str | None = None,
+    description: str | None = None,
+    status: str | None = None,
+    due_at: datetime | None = None,
+    assignee_user_id: str | None = None,
+    data: dict | None = None,
+    merge_data: bool = True,
+    clear_fields: list[str] | None = None,
+) -> dict:
+    """Partially update a task (REST parity: PATCH /tasks/{id}). Scopes: tasks:write.
+
+    ``status`` is open|in_progress|done|cancelled (done sets completed_at).
+    ``data`` merges by default (null removes a key; ``merge_data=false`` replaces).
+    Null out description/due_at/assignee_user_id via ``clear_fields``. Emits task.updated.
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "tasks:write")
+        t = db.get(Task, task_id)
+        if not t or t.workspace_id != p.workspace.id:
+            raise RuntimeError("not found")
+        from app.schemas import TaskPatch
+
+        updates = _build_patch(
+            TaskPatch,
+            t,
+            {
+                "title": title,
+                "description": description,
+                "status": status,
+                "due_at": due_at,
+                "assignee_user_id": assignee_user_id,
+            },
+            data=data,
+            merge_data=merge_data,
+            clear_fields=clear_fields,
+        )
+        background = BackgroundTasks()
+        apply_task_patch(db, p, t, updates, background=background)
+        db.commit()
+        db.refresh(t)
+        _run_background(background)
         return _serialize(t)
     finally:
         db.close()
@@ -1387,6 +1648,69 @@ def search_products(
 
 
 @mcp.tool()
+def update_product(
+    ctx: Context,
+    product_id: str,
+    name: str | None = None,
+    sku: str | None = None,
+    description: str | None = None,
+    unit_price: float | None = None,
+    currency: str | None = None,
+    is_active: bool | None = None,
+    tags: list[str] | None = None,
+    data: dict | None = None,
+    merge_data: bool = True,
+    external_id: str | None = None,
+    clear_fields: list[str] | None = None,
+) -> dict:
+    """Partially update a catalog product (REST parity: PATCH /products/{id}).
+
+    Scopes: products:write; key role owner|admin|member. Existing deal line items
+    keep their snapshotted name/price. ``data`` merges by default (null removes a
+    key; ``merge_data=false`` replaces). Null out sku/description/unit_price/
+    external_id via ``clear_fields``. Emits product.updated.
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "products:write")
+        _require_member_role(p)
+        prod = db.get(Product, product_id)
+        if not prod or prod.workspace_id != p.workspace.id:
+            raise RuntimeError("not found")
+        from app.schemas import ProductPatch
+
+        updates = _build_patch(
+            ProductPatch,
+            prod,
+            {
+                "name": name,
+                "sku": sku,
+                "description": description,
+                "unit_price": unit_price,
+                "currency": currency,
+                "is_active": is_active,
+                "tags": tags,
+                "external_id": external_id,
+            },
+            data=data,
+            merge_data=merge_data,
+            clear_fields=clear_fields,
+        )
+        background = BackgroundTasks()
+        apply_product_patch(db, p, prod, updates, background=background)
+        try:
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            raise RuntimeError(f"product conflict: {exc.__class__.__name__}") from exc
+        db.refresh(prod)
+        _run_background(background)
+        return _serialize(prod)
+    finally:
+        db.close()
+
+
+@mcp.tool()
 def add_line_item(
     ctx: Context,
     deal_id: str,
@@ -1487,6 +1811,63 @@ def list_line_items(ctx: Context, deal_id: str) -> list[dict]:
             .order_by(DealLineItem.position.asc(), DealLineItem.created_at.asc())
         ).all()
         return [_serialize(r) for r in rows]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def update_line_item(
+    ctx: Context,
+    deal_id: str,
+    line_item_id: str,
+    name: str | None = None,
+    sku: str | None = None,
+    quantity: float | None = None,
+    unit_price: float | None = None,
+    currency: str | None = None,
+    position: int | None = None,
+    data: dict | None = None,
+    merge_data: bool = True,
+    clear_fields: list[str] | None = None,
+) -> dict:
+    """Partially update a deal line item (REST parity: PATCH /deals/{id}/line-items/{line_id}).
+
+    Scopes: deals:write; key role owner|admin|member. ``data`` merges by default
+    (null removes a key; ``merge_data=false`` replaces). Emits deal.line_item_updated.
+    """
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "deals:write")
+        _require_member_role(p)
+        deal = db.get(Deal, deal_id)
+        if not deal or deal.workspace_id != p.workspace.id or deal.deleted_at is not None:
+            raise RuntimeError("deal not found")
+        line = db.get(DealLineItem, line_item_id)
+        if not line or line.deal_id != deal.id:
+            raise RuntimeError("line item not found")
+        from app.schemas import DealLineItemPatch
+
+        updates = _build_patch(
+            DealLineItemPatch,
+            line,
+            {
+                "name": name,
+                "sku": sku,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "currency": currency,
+                "position": position,
+            },
+            data=data,
+            merge_data=merge_data,
+            clear_fields=clear_fields,
+        )
+        background = BackgroundTasks()
+        apply_line_item_patch(db, p, deal, line, updates, background=background)
+        db.commit()
+        db.refresh(line)
+        _run_background(background)
+        return _serialize(line)
     finally:
         db.close()
 
@@ -2456,6 +2837,73 @@ def search_leads(
             )
         q = q.order_by(Lead.created_at.desc()).limit(min(limit, 200))
         return [_serialize(r) for r in db.scalars(q).all()]
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def update_lead(
+    ctx: Context,
+    lead_id: str,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    title: str | None = None,
+    company_name: str | None = None,
+    company_domain: str | None = None,
+    source: str | None = None,
+    status: str | None = None,
+    score: float | None = None,
+    owner_user_id: str | None = None,
+    tags: list[str] | None = None,
+    data: dict | None = None,
+    merge_data: bool = True,
+    clear_fields: list[str] | None = None,
+) -> dict:
+    """Partially update a lead (REST parity: PATCH /leads/{id}). Scopes: leads:write.
+
+    ``status`` is new|working|qualified|unqualified|converted. ``data`` merges by default (null removes a key;
+    ``merge_data=false`` replaces). Null out nullable fields via ``clear_fields``.
+    Use ``convert_lead`` to convert. Emits lead.updated.
+    """
+    from app.models import Lead
+    from app.schemas import LeadPatch
+
+    p, db = _principal_from_ctx(ctx)
+    try:
+        _require_scopes(p, "leads:write")
+        row = db.get(Lead, lead_id)
+        if not row or row.workspace_id != p.workspace.id:
+            raise RuntimeError("lead not found")
+        updates = _build_patch(
+            LeadPatch,
+            row,
+            {
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email,
+                "phone": phone,
+                "title": title,
+                "company_name": company_name,
+                "company_domain": company_domain,
+                "source": source,
+                "status": status,
+                "score": score,
+                "owner_user_id": owner_user_id,
+                "tags": tags,
+            },
+            data=data,
+            merge_data=merge_data,
+            clear_fields=clear_fields,
+        )
+        background = BackgroundTasks()
+        with _http_errors_as_tool_errors():
+            apply_lead_patch(db, p, row, updates, background=background)
+        db.commit()
+        db.refresh(row)
+        _run_background(background)
+        return _serialize(row)
     finally:
         db.close()
 

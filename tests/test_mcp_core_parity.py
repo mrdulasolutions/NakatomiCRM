@@ -57,8 +57,19 @@ def test_mcp_update_company_and_complete_task(workspace):
     assert done["completed_at"] is not None
 
 
-def test_mcp_search_deals_by_company_name_flow(workspace):
+def test_mcp_search_deals_by_company_name_flow(workspace, client):
     ctx = _FakeCtx(workspace["api_key"])
+    r = client.post(
+        "/pipelines",
+        headers=workspace["headers"],
+        json={
+            "name": "Sales",
+            "slug": "sales",
+            "is_default": True,
+            "stages": [{"name": "Lead", "slug": "lead", "position": 0, "probability": 10}],
+        },
+    )
+    assert r.status_code == 201
     co = create_company(ctx, name="Acme Corp")
     create_deal(ctx, name="Acme Big Deal", company_id=co["id"])
     companies = search_companies(ctx, query="Acme")

@@ -18,8 +18,7 @@ from app.schemas import (
     OkResponse,
     Page,
 )
-from app.services.custom_field_validate import validate_entity_data
-from app.services.diffs import compute_changes
+from app.services.entity_patch import apply_deal_patch
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -155,70 +154,7 @@ def patch_deal(
     if not d or d.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
     updates = payload.model_dump(exclude_unset=True)
-    old_stage = d.stage_id
-    old_status = d.status
-    if "data" in updates and updates["data"] is not None:
-        try:
-            validate_entity_data(
-                db, p.workspace.id, EntityType.deal, updates["data"], merge_existing=d.data or {}
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    # Workspace policy (required fields / block rules)
-    from app.services.policies import evaluate_write
-
-    stage_slug = None
-    if "stage_id" in updates and updates["stage_id"]:
-        st = db.get(Stage, updates["stage_id"])
-        stage_slug = st.slug if st else None
-    check = {
-        "amount": updates.get("amount", d.amount),
-        "primary_contact_id": updates.get("primary_contact_id", d.primary_contact_id),
-        "status": updates.get("status", d.status),
-        "stage_id": updates.get("stage_id", d.stage_id),
-    }
-    if hasattr(check["status"], "value"):
-        check["status"] = check["status"].value
-    action = "deal.won" if check["status"] == "won" else "deal.updated"
-    evaluate_write(p, entity_type="deal", action=action, payload=check, stage_slug=stage_slug)
-    for k, v in updates.items():
-        setattr(d, k, v)
-    if "status" in updates and updates["status"] in (DealStatus.won, DealStatus.lost):
-        d.closed_at = datetime.now(UTC)
-    # Capture per-field before/after *before* commit — SA's history only has
-    # the old values while the session is still dirty.
-    changes = compute_changes(d, list(updates.keys()))
-    emit(
-        db,
-        p,
-        event_type="deal.updated",
-        entity_type=EntityType.deal,
-        entity_id=d.id,
-        payload={"changes": changes},
-        background=background,
-    )
-    if "stage_id" in updates and updates["stage_id"] != old_stage:
-        emit(
-            db,
-            p,
-            event_type="deal.stage_changed",
-            entity_type=EntityType.deal,
-            entity_id=d.id,
-            payload={"from_stage_id": old_stage, "to_stage_id": d.stage_id},
-            background=background,
-        )
-    if "status" in updates and updates["status"] != old_status:
-        new_status = updates["status"]
-        status_name = new_status.value if hasattr(new_status, "value") else str(new_status)
-        emit(
-            db,
-            p,
-            event_type=f"deal.{status_name}",
-            entity_type=EntityType.deal,
-            entity_id=d.id,
-            payload={"amount": float(d.amount) if d.amount else None},
-            background=background,
-        )
+    apply_deal_patch(db, p, d, updates, background=background)
     db.commit()
     db.refresh(d)
     return DealOut.model_validate(d)

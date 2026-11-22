@@ -5,6 +5,22 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **MCP:** `update_deal` — partial deal edits (name, amount, currency, expected_close_date, primary_contact_id, company_id, owner_user_id, tags, status, external_id, `data`) with merge-by-default `data` (`null` removes a key, `merge_data=false` replaces) and `clear_fields` for explicit nulls. Closes [#27](https://github.com/mrdulasolutions/NakatomiCRM/issues/27).
+- **MCP:** `update_task`, `update_note`, `update_product`, `update_lead`, `update_line_item` with the same conventions, scopes, and events as their REST `PATCH` routes.
+- **Events:** `deal.line_item_updated`; `lead.created` / `lead.updated` / `lead.converted` now listed in `/schema` `event_types`.
+
+### Changed
+
+- REST `PATCH` for deals, tasks, notes, products, leads, and line items now runs through shared `app/services/entity_patch.py` (same behavior; MCP reuses it).
+- REST `PATCH /deals/{id}/line-items/{line_id}` now emits `deal.line_item_updated` (timeline + audit); it previously emitted nothing.
+- `mcp_tools.schema_version` → `1.3`.
+
+### Fixed
+
+- `tests/test_mcp_core_parity.py::test_mcp_search_deals_by_company_name_flow` created a deal without a pipeline and failed on `main`.
+
 ## [1.0.10] — 2026-09-25 — Roadmap stretch (P1/P2/P3/P5–P6)
 
 ### Added

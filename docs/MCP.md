@@ -36,19 +36,24 @@ that support OAuth should prompt a login; clients that use static keys must send
 | `get_deal` | Single deal by id — use for "what's the status of the Acme deal?" after `search_deals` |
 | `create_deal` | Create a deal; picks default pipeline + first stage if unspecified |
 | `move_deal_stage` | Move a deal to a stage by slug (auto-sets status on won/lost stages) |
+| `update_deal` | Partial deal edit (name, amount, currency, dates, contact/company/owner, tags, status, `data`); `data` merges by default, `null` removes a key, `merge_data=false` replaces; `clear_fields` nulls fields |
 | `add_line_item` | Add a line to a deal (snapshots from a `product_id` or accepts ad-hoc `name`+`unit_price`) |
 | `list_line_items` | Return the lines on a deal in display order |
+| `update_line_item` | Partial edit of a deal line item (quantity, price, name, position, `data`) |
 | `create_product` | Add a product to the workspace catalog |
 | `search_products` | Find products by substring on name/sku/description, exact SKU, or active flag |
+| `update_product` | Partial edit of a catalog product (existing line items keep their snapshot) |
 | `forecast` | Period rollup (`2026Q2`, `2026-04`, or `custom:from:to`) — totals + by-stage + by-owner |
 | `log_activity` | Log a call/meeting/email/etc. on any entity |
 | `send_email` | Send via the workspace's configured SMTP; persists an `email_outbound` activity |
 | `add_calendar_feed` | Subscribe the workspace to an iCal `.ics` URL (Google, Microsoft, Fastmail, etc.) |
 | `sync_calendar_feed` | Run an on-demand sync of one feed; returns `events_touched` |
 | `add_note` | Markdown note on any entity |
+| `update_note` | Edit a note's body and/or `data` |
 | `create_task` | Task on any entity |
 | `list_tasks` | Filter tasks by status and assignee |
 | `complete_task` | Mark a task done |
+| `update_task` | Partial task edit (title, description, status, due date, assignee, `data`) |
 | `relate` | Add a typed edge between two entities (relationship graph) |
 | `timeline` | Recent events for one entity |
 | `describe_schema` | Return the full entity/field/event manifest |
@@ -57,6 +62,29 @@ that support OAuth should prompt a login; clients that use static keys must send
 | `memory_link` | Cross-link a memory id with a CRM entity |
 | `memory_trace` | List all memories linked to one CRM entity |
 | `ingest` | Normalize CSV / JSON / vCard / text and land it as CRM rows |
+
+Lead tools (`create_lead`, `search_leads`, `update_lead`, `convert_lead`) are listed
+in [MCP_PARITY.md](./MCP_PARITY.md).
+
+### Update tool conventions
+
+All `update_*` tools added for [#27](https://github.com/mrdulasolutions/NakatomiCRM/issues/27)
+(`update_deal`, `update_task`, `update_note`, `update_product`, `update_lead`,
+`update_line_item`) share one shape and the same code path as the REST `PATCH` routes
+(`app/services/entity_patch.py`):
+
+- Explicit, typed keyword arguments; omitted / `null` arguments are left unchanged.
+- `data` is **merged** into the existing object by default; a `null` value removes that
+  key. Pass `merge_data=false` to replace the whole object (REST `PATCH` replaces).
+- `clear_fields=["amount", …]` sets nullable columns to `null` explicitly.
+- Same scopes as REST (`deals:write`, `tasks:write`, `notes:write`, `products:write`,
+  `leads:write`; products and line items also require an owner/admin/member key role).
+- Emits the same `<entity>.updated` event (timeline + audit log + webhooks) with a
+  per-field `changes` diff where REST has one. Line items emit `deal.line_item_updated`.
+- `update_deal(status=…)` mirrors REST (sets `closed_at`, emits `deal.won`/`deal.lost`)
+  but does not move the stage; use `move_deal_stage` / `advance_deal` for pipeline moves.
+
+`update_contact` / `update_company` keep their original `updates: dict` signature.
 
 ## Claude Desktop (custom connector, OAuth)
 

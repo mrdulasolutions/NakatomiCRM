@@ -8,6 +8,7 @@ from app.db import get_db
 from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
 from app.models import EntityType, Note
 from app.schemas import NoteIn, NoteOut, OkResponse, Page
+from app.services.entity_patch import apply_note_patch
 from app.services.events import emit
 from app.services.pagination import apply_cursor, encode_cursor
 
@@ -86,19 +87,7 @@ def patch_note(
     n = db.get(Note, note_id)
     if not n or n.workspace_id != p.workspace.id:
         raise HTTPException(status_code=404, detail="not found")
-    if "body" in body:
-        n.body = body["body"]
-    if "data" in body:
-        n.data = body["data"]
-    emit(
-        db,
-        p,
-        event_type="note.updated",
-        entity_type=EntityType.note,
-        entity_id=n.id,
-        payload={},
-        background=background,
-    )
+    apply_note_patch(db, p, n, body, background=background)
     db.commit()
     db.refresh(n)
     return NoteOut.model_validate(n)

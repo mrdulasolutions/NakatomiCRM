@@ -11,12 +11,12 @@ surface — not 1:1 with every route.
 | Companies | `/companies/*` | `search_companies`, `get_company`, `create_company`, **`update_company`** | |
 | Account map | compose REST | **`upsert_account_map`** | compound |
 | Pipelines | `/pipelines/*` | `list_pipelines`, `create_pipeline` | |
-| Deals | `/deals/*` | `search_deals`, `get_deal`, `create_deal`, `move_deal_stage`, **`advance_deal`** | |
-| Products / lines | `/products`, `/deals/…/line-items` | `create_product`, `search_products`, `add_line_item`, `list_line_items` | |
+| Deals | `/deals/*` | `search_deals`, `get_deal`, `create_deal`, **`update_deal`**, `move_deal_stage`, **`advance_deal`** | |
+| Products / lines | `/products`, `/deals/…/line-items` | `create_product`, `search_products`, **`update_product`**, `add_line_item`, `list_line_items`, **`update_line_item`** | |
 | Forecast | `GET /forecast` | `forecast` | |
 | Activities | `/activities/*` | `log_activity`, **`log_interaction`** | |
-| Notes | `/notes/*` | `add_note` | |
-| Tasks | `/tasks/*` | `create_task`, `list_tasks`, **`complete_task`** | |
+| Notes | `/notes/*` | `add_note`, **`update_note`** | |
+| Tasks | `/tasks/*` | `create_task`, `list_tasks`, **`complete_task`**, **`update_task`** | |
 | Relationships | `/relationships/*` | `relate` | |
 | Timeline | `/timeline/*` | `timeline` | |
 | Open work | compose | **`morning_briefing`** | compound |
