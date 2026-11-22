@@ -86,7 +86,7 @@ def _assert_production_secrets() -> None:
 async def _lifespan(_app: FastAPI):
     """Start the webhook-delivery worker AND the FastMCP session manager.
 
-    FastMCP's streamable_http_app needs ``session_manager.run()`` active for
+    The MCP server's streamable_http_app needs ``session_manager.run()`` active for
     the lifetime of the process — without it, incoming MCP requests crash
     with "Task group is not initialized". Mounting the ASGI app alone is
     not enough; the parent app has to enter its lifespan too.

@@ -20,7 +20,7 @@ from typing import Any
 
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
 from sqlalchemy import func, or_, select
@@ -124,10 +124,8 @@ class NakatomiTokenVerifier:
 #  - auth + token_verifier: HTTP 401 until a valid Bearer nk_… is presented
 #    (OAuth 2.1 discovery still via app/.well-known routes).
 _base = _public_base_url()
-mcp = FastMCP(
+mcp: MCPServer[None] = MCPServer(
     "Nakatomi CRM",
-    streamable_http_path="/",
-    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     token_verifier=NakatomiTokenVerifier(),
     auth=AuthSettings(
         issuer_url=AnyHttpUrl(_base),
@@ -3173,8 +3171,7 @@ def _serialize(obj: Any) -> dict:
 
 def build_asgi_app():
     """Return the MCP streamable-HTTP ASGI app for mounting under FastAPI."""
-    try:
-        return mcp.streamable_http_app()
-    except AttributeError:
-        # older SDKs
-        return mcp.sse_app()
+    return mcp.streamable_http_app(
+        streamable_http_path="/",
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )

@@ -28,7 +28,7 @@ def test_mcp_initialize_requires_auth(client):
 
 
 def test_mcp_initialize_with_api_key(workspace):
-    # Streamable HTTP needs the FastMCP session manager lifespan running.
+    # Streamable HTTP needs the MCP session manager lifespan running.
     from starlette.testclient import TestClient
 
     from app.main import app as asgi_app
@@ -54,6 +54,31 @@ def test_mcp_initialize_with_api_key(workspace):
         )
         assert r.status_code == 200, r.text
         assert "Nakatomi" in r.text or "protocolVersion" in r.text
+
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {workspace['api_key']}",
+            "Mcp-Session-Id": r.headers["Mcp-Session-Id"],
+            "MCP-Protocol-Version": "2024-11-05",
+        }
+        r = client.post(
+            "/mcp",
+            headers=headers,
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+        )
+        assert r.status_code == 202, r.text
+        r = client.post(
+            "/mcp",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "list_pipelines", "arguments": {}},
+            },
+        )
+        assert r.status_code == 200, r.text
+        assert '"isError":false' in r.text.replace(" ", ""), r.text
 
 
 def test_oauth_protected_resource_mcp_path(client):

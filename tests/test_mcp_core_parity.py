@@ -22,12 +22,10 @@ class _FakeCtx:
         self.request_context = SimpleNamespace(request=request)
 
 
-def test_mcp_deal_read_and_search(workspace, client):
-    h = workspace["headers"]
-    ctx = _FakeCtx(workspace["api_key"])
+def _create_pipeline(workspace, client):
     r = client.post(
         "/pipelines",
-        headers=h,
+        headers=workspace["headers"],
         json={
             "name": "Sales",
             "slug": "sales",
@@ -36,6 +34,11 @@ def test_mcp_deal_read_and_search(workspace, client):
         },
     )
     assert r.status_code == 201
+
+
+def test_mcp_deal_read_and_search(workspace, client):
+    _create_pipeline(workspace, client)
+    ctx = _FakeCtx(workspace["api_key"])
     co = create_company(ctx, name="Acme Corp", domain="acme.com")
     deal = create_deal(ctx, name="Enterprise Deployment", amount=25000, company_id=co["id"])
     got = get_deal(ctx, deal_id=deal["id"])
@@ -57,7 +60,8 @@ def test_mcp_update_company_and_complete_task(workspace):
     assert done["completed_at"] is not None
 
 
-def test_mcp_search_deals_by_company_name_flow(workspace):
+def test_mcp_search_deals_by_company_name_flow(workspace, client):
+    _create_pipeline(workspace, client)
     ctx = _FakeCtx(workspace["api_key"])
     co = create_company(ctx, name="Acme Corp")
     create_deal(ctx, name="Acme Big Deal", company_id=co["id"])
