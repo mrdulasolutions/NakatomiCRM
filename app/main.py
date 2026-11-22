@@ -40,6 +40,7 @@ from app.routers import (
     memory,
     notes,
     oauth,
+    password_recovery,
     pipelines,
     policies,
     products,
@@ -433,6 +434,7 @@ if _PUBLIC_DIR.exists():
 
 # REST routers
 app.include_router(auth.router)
+app.include_router(password_recovery.router)
 app.include_router(sso.router)
 app.include_router(workspaces.router)
 app.include_router(approvals.router)

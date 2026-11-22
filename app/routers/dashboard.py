@@ -75,6 +75,7 @@ _DASHBOARD_HTML = (
       <label for="password">Password</label>
       <input id="password" type="password" autocomplete="current-password" required />
       <button type="submit">Sign in</button>
+      <p><a href="/auth/forgot-password">Forgot password?</a></p>
     </form>
     <div id="sso-links"></div>
     <div id="auth-error" class="alert err" hidden role="alert"></div>

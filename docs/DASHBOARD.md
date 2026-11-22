@@ -14,6 +14,34 @@ Open **`/dashboard`** and sign in with your Nakatomi email and password or a con
 
 For Railway, configure `ENVIRONMENT=production` and a strong `SECRET_KEY`. Set `PUBLIC_BASE_URL` to your canonical HTTPS origin when using a custom domain. The app otherwise uses the Railway service domain. Use that same origin for the provider callback URLs.
 
+## Password recovery
+
+Use **Forgot password?** on the dashboard or the MCP authorization page.
+Password-based accounts can request a single-use link valid for 20 minutes
+after the operator configures recovery email. SSO-only users recover access
+through their identity provider.
+
+Set `RECOVERY_FROM_ADDRESS` to a sender approved by your mail provider.
+Set `RECOVERY_RESEND_API_KEY` to deliver over HTTPS through Resend. This option
+works on Railway plans that block outbound SMTP and takes precedence when configured.
+For SMTP delivery, configure `RECOVERY_SMTP_HOST`,
+`RECOVERY_SMTP_PORT`, `RECOVERY_FROM_ADDRESS`, and the SMTP username and
+password when required. Port 587 uses STARTTLS by default and port 465 uses
+implicit TLS. For a local test mail relay, explicitly allow its hostname in
+`INTEGRATION_PRIVATE_HOSTS` and set `RECOVERY_SMTP_USE_TLS=false` if needed.
+
+| Deployment | Recovery link origin | Operator reset |
+| --- | --- | --- |
+| Railway | Uses the Railway public domain. Set `PUBLIC_BASE_URL` for a custom domain. | In the app service's Railway SSH terminal, run `python -m app reset-password --email owner@example.com`. |
+| VPS | Set `PUBLIC_BASE_URL` to the public HTTPS origin. | Run the same command in the app environment, or prefix it with `docker compose exec app`. |
+| Local | Set `PUBLIC_BASE_URL=http://localhost:8000` or your actual loopback URL. | Run the same command in the local Python environment, or prefix it with `docker compose exec app`. |
+
+The operator command works without a mail provider and prompts for the password without
+echoing it. Use the database for the existing installation. Both recovery
+paths preserve the account and workspace memberships and revoke browser
+sessions. Existing API keys and agent grants retain their own revocation
+controls. Run Alembic migration 0019 before using the flow.
+
 ## Views
 
 | Tab | Purpose |

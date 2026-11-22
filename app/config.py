@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60
 
+    RECOVERY_RESEND_API_KEY: str = ""
+    RECOVERY_SMTP_HOST: str = ""
+    RECOVERY_SMTP_PORT: int = 587
+    RECOVERY_SMTP_USER: str = ""
+    RECOVERY_SMTP_PASSWORD: str = ""
+    RECOVERY_SMTP_USE_TLS: bool = True
+    RECOVERY_FROM_ADDRESS: str = ""
+
     STORAGE_BACKEND: str = "local"
     STORAGE_LOCAL_PATH: str = "./data/files"
     S3_BUCKET: str = ""

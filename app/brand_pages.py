@@ -290,6 +290,7 @@ def render_authorize_page(
       <input id="email" name="email" type="email" required autofocus value="{esc(email)}" />
       <label for="password">Password</label>
       <input id="password" name="password" type="password" required />
+      <p><a href="/auth/forgot-password">Forgot password?</a></p>
     """
     )
     body = f"""

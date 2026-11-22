@@ -114,6 +114,7 @@ account or R2 setup required — it's all inside Railway.
 | `WEBHOOK_TIMEOUT_SECONDS` | `10` | | |
 | `WEBHOOK_MAX_RETRIES` | `3` | | |
 | `PUBLIC_BASE_URL` | (empty) | | Set to the public HTTPS origin after first deploy (SSO / OAuth redirects). |
+| `RECOVERY_RESEND_API_KEY` | (empty) | | Optional HTTPS password recovery mail. Set `RECOVERY_FROM_ADDRESS` to a verified sender. See [DASHBOARD.md](./DASHBOARD.md#password-recovery). |
 | `OTEL_ENABLED` | `false` | | Optional OpenTelemetry ([OBSERVABILITY.md](./OBSERVABILITY.md)). |
 | `OTEL_SERVICE_NAME` | `nakatomi` | | |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | (empty) | | e.g. collector OTLP/HTTP base URL. |
