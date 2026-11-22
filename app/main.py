@@ -35,6 +35,7 @@ from app.routers import (
     forensics,
     import_crm,
     ingest,
+    invitations,
     jobs,
     leads,
     memory,
@@ -471,6 +472,7 @@ app.include_router(custom_fields.router)
 app.include_router(exports.router)
 app.include_router(schema_router.router)
 app.include_router(dashboard.router)
+app.include_router(invitations.router)
 app.include_router(welcome.router)
 
 

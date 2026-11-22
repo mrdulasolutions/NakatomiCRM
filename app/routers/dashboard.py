@@ -59,6 +59,7 @@ _DASHBOARD_HTML = (
     <button type="button" data-view="webhooks">Webhooks</button>
     <button type="button" data-view="memory">Memory</button>
     <button type="button" data-view="agents" id="agents-tab" hidden>Connect an agent</button>
+    <a href="/dashboard/members" id="members-link" hidden>Members</a>
   </nav>
   <span style="flex:1"></span>
   <select id="workspace-picker" aria-label="Workspace" hidden></select>
@@ -508,7 +509,9 @@ async function init() {
     picker.value = session.workspace_id;
     picker.hidden = session.workspaces.length < 2;
     const role = session.workspaces.find(ws => ws.id === session.workspace_id)?.role;
-    document.getElementById("agents-tab").hidden = !["owner", "admin"].includes(role);
+    const canManage = ["owner", "admin"].includes(role);
+    document.getElementById("agents-tab").hidden = !canManage;
+    document.getElementById("members-link").hidden = !canManage;
     document.getElementById("auth-error").hidden = true;
     setDashboardAuth(false);
     await loadAudit();
@@ -736,14 +739,16 @@ def _agent_records(db: Session, workspace_id: str):
     )
 
 
-def _agent_admin(p: Principal = Depends(_dashboard_user)) -> Principal:
+def dashboard_admin(p: Principal = Depends(_dashboard_user)) -> Principal:
     if p.role not in (MemberRole.owner, MemberRole.admin):
         raise HTTPException(403, "Workspace owner or admin required")
     return p
 
 
 @router.get("/dashboard/agents")
-def dashboard_agents(request: Request, db: Session = Depends(get_db), p: Principal = Depends(_agent_admin)):
+def dashboard_agents(
+    request: Request, db: Session = Depends(get_db), p: Principal = Depends(dashboard_admin)
+):
     agents = {}
     client_names = {
         item.id: item.name
@@ -781,7 +786,7 @@ def dashboard_agents(request: Request, db: Session = Depends(get_db), p: Princip
 
 @router.post("/dashboard/agents", status_code=201)
 def create_dashboard_agent(
-    body: AgentSetup, request: Request, db: Session = Depends(get_db), p: Principal = Depends(_agent_admin)
+    body: AgentSetup, request: Request, db: Session = Depends(get_db), p: Principal = Depends(dashboard_admin)
 ):
     require_same_origin(request)
     token, prefix, digest = generate_api_key()
@@ -808,7 +813,7 @@ def create_dashboard_agent(
 
 @router.delete("/dashboard/agents/{key_id}")
 def disconnect_dashboard_agent(
-    key_id: UUID, request: Request, db: Session = Depends(get_db), p: Principal = Depends(_agent_admin)
+    key_id: UUID, request: Request, db: Session = Depends(get_db), p: Principal = Depends(dashboard_admin)
 ):
     require_same_origin(request)
     key = db.get(ApiKey, str(key_id))

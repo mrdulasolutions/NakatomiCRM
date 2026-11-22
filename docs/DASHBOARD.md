@@ -2,8 +2,6 @@
 
 Use **`/dashboard`** to inspect workspace activity and manage agent connections.
 
-> Session sign-in and agent onboarding are pending in [PR #31](https://github.com/mrdulasolutions/NakatomiCRM/pull/31). ZIP exports are pending in [PR #32](https://github.com/mrdulasolutions/NakatomiCRM/pull/32). Keep the dashboard disabled on public deployments until the safety review and staging checks are complete.
-
 **Wiki (screenshots + tour):** [GitHub Wiki — Dashboard](https://github.com/mrdulasolutions/NakatomiCRM/wiki/Dashboard)
 
 ---
@@ -13,6 +11,49 @@ Use **`/dashboard`** to inspect workspace activity and manage agent connections.
 Open **`/dashboard`** and sign in with your Nakatomi email and password or a configured Google or GitHub provider. Select a workspace if you belong to more than one. The server stores your session and invalidates it when you sign out. Set `DASHBOARD_ENABLED=false` to disable the dashboard.
 
 For Railway, configure `ENVIRONMENT=production` and a strong `SECRET_KEY`. Set `PUBLIC_BASE_URL` to your canonical HTTPS origin when using a custom domain. The app otherwise uses the Railway service domain. Use that same origin for the provider callback URLs.
+
+## Share a workspace with your team
+
+Each teammate signs in with their own account. Members of the same workspace
+share its CRM records, including contacts, companies, deals, and tasks.
+
+1. Sign in as a workspace owner or admin, select the company workspace, and
+   open **Members**.
+2. Enter your teammate’s email and choose **Member** or **Read-only**. Owners
+   can also invite **Admins**. Select **Create invitation**.
+3. Your teammate opens the invitation and joins the workspace. New users set a
+   password and join the company workspace directly. Existing users can use
+   their current password or an active session for the invited email. Existing
+   Google or GitHub users can sign in first and then reopen the invitation.
+4. After accepting, the dashboard opens in the company workspace. Teammates
+   with multiple memberships can move between them using the **Workspace** menu.
+
+Invitations expire after two days and work once. To resend, create another
+invitation for the same email. That invalidates the previous link. You can
+also revoke a pending invitation from **Members**. Use the same page to
+change teammates’ roles or remove their workspace access. Owners manage
+admins, and both owners and admins manage members and read-only teammates.
+
+### Invitation delivery
+
+Invitations and password recovery use the same installation-wide mail settings.
+For Resend, set `RECOVERY_RESEND_API_KEY` and `RECOVERY_FROM_ADDRESS` using a
+verified sender. If you have already configured Resend for password recovery,
+those settings also enable invitation email. SMTP is also supported. If mail
+is unconfigured or sending fails, copy the generated invitation link from the
+dashboard and share it privately with the intended teammate.
+
+On Railway, links use the service’s public domain unless you set
+`PUBLIC_BASE_URL` for a custom domain. Use Resend on Railway plans that block
+outbound SMTP. On a VPS or Docker Compose deployment, set `PUBLIC_BASE_URL`
+to the HTTPS address teammates use. On a local-only install, use your
+loopback address, such as `http://localhost:8000`. A loopback link can only be
+opened on the machine running Nakatomi. To invite teammates on other machines,
+use a reachable HTTPS origin.
+
+The API still supports listing members with `GET /workspace/members`, adding
+an existing account with `POST /workspace/members`, and removing a member
+with `DELETE /workspace/members/{user_id}`.
 
 ## Password recovery
 

@@ -3,40 +3,20 @@
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlsplit
 
-import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.models import BrowserSession, EmailConfig, PasswordReset, User
+from app.models import BrowserSession, PasswordReset, User
 from app.security import hash_api_key, hash_password
-from app.services.email_io import send_email
+from app.services.account_email import canonical_origin, email_configured, send_account_email
 
 log = logging.getLogger(__name__)
 RESET_TTL = timedelta(minutes=20)
 
 
 def recovery_origin() -> str | None:
-    origin = settings.public_origin
-    smtp_configured = settings.RECOVERY_SMTP_HOST and (
-        bool(settings.RECOVERY_SMTP_USER) == bool(settings.RECOVERY_SMTP_PASSWORD)
-    )
-    if not (
-        origin and settings.RECOVERY_FROM_ADDRESS and (settings.RECOVERY_RESEND_API_KEY or smtp_configured)
-    ):
-        return None
-    try:
-        url = urlsplit(origin)
-        local_http = url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1", "::1"}
-        if (url.scheme != "https" and not local_http) or not url.hostname or url.username or url.password:
-            return None
-        if url.path or url.query or url.fragment:
-            return None
-    except ValueError:
-        return None
-    return origin
+    return canonical_origin() if email_configured() else None
 
 
 def active_user(db: Session, email: str) -> User | None:
@@ -100,28 +80,6 @@ def send_reset_email(email: str, link: str) -> None:
         f"{link}\n\nIf you did not request this, you can ignore this email."
     )
     try:
-        if settings.RECOVERY_RESEND_API_KEY:
-            with httpx.Client(timeout=10, trust_env=False, follow_redirects=False) as client:
-                response = client.post(
-                    "https://api.resend.com/emails",
-                    headers={"Authorization": f"Bearer {settings.RECOVERY_RESEND_API_KEY}"},
-                    json={
-                        "from": settings.RECOVERY_FROM_ADDRESS,
-                        "to": [email],
-                        "subject": subject,
-                        "text": body,
-                    },
-                )
-                response.raise_for_status()
-            return
-        cfg = EmailConfig(
-            smtp_host=settings.RECOVERY_SMTP_HOST,
-            smtp_port=settings.RECOVERY_SMTP_PORT,
-            smtp_user=settings.RECOVERY_SMTP_USER or None,
-            smtp_password=settings.RECOVERY_SMTP_PASSWORD or None,
-            smtp_use_tls=settings.RECOVERY_SMTP_USE_TLS,
-            from_address=settings.RECOVERY_FROM_ADDRESS,
-        )
-        send_email(cfg, to=[email], cc=[], bcc=[], subject=subject, body=body, require_auth=False)
+        send_account_email(email, subject, body)
     except Exception as exc:
         log.warning("Password reset email delivery failed (%s)", type(exc).__name__)

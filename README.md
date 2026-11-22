@@ -157,6 +157,9 @@ curl http://localhost:8000/health
 
 You now have a running, self-hosted agent CRM.
 
+To give coworkers their own logins and access to the same CRM records, see
+[Share a workspace with your team](./docs/DASHBOARD.md#share-a-workspace-with-your-team).
+
 ### Python (local)
 
 ```bash

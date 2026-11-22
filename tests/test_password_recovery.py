@@ -12,7 +12,7 @@ from app.db import SessionLocal
 from app.models import BrowserSession, PasswordReset
 from app.routers import password_recovery
 from app.security import hash_api_key
-from app.services import password_recovery as recovery_service
+from app.services import account_email
 
 
 def _recovery_config(monkeypatch, origin="http://localhost:8000"):
@@ -69,7 +69,7 @@ def test_railway_links_use_canonical_host_and_expire(client, workspace, monkeypa
         return httpx.Response(200, json={"id": "test-message"})
 
     http_client = httpx.Client(transport=httpx.MockTransport(deliver))
-    monkeypatch.setattr(recovery_service.httpx, "Client", lambda **kwargs: http_client)
+    monkeypatch.setattr(account_email.httpx, "Client", lambda **kwargs: http_client)
     client.post(
         "/auth/forgot-password",
         data={"email": workspace["user_email"]},

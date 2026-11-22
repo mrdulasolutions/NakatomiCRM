@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Form
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from app.brand_pages import esc
+from app.brand_pages import account_page, esc
 from app.db import get_db
 from app.services.password_recovery import issue_reset, recovery_origin, redeem_reset, send_reset_email
 
@@ -16,26 +16,13 @@ _REQUEST_COMPLETE = (
 )
 
 
-def _page(title: str, body: str, *, status_code: int = 200) -> HTMLResponse:
-    return HTMLResponse(
-        f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(title)} · Nakatomi</title></head><body><main><h1>{esc(title)}</h1>{body}</main></body></html>""",
-        status_code=status_code,
-        headers={
-            "Cache-Control": "no-store",
-            "Referrer-Policy": "no-referrer",
-            "X-Frame-Options": "DENY",
-            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-        },
-    )
-
-
 @router.get("/forgot-password", response_class=HTMLResponse)
 def forgot_password_page():
     if not recovery_origin():
-        return _page("Password recovery", "<p>Contact your installation operator to reset your password.</p>")
-    return _page(
+        return account_page(
+            "Password recovery", "<p>Contact your installation operator to reset your password.</p>"
+        )
+    return account_page(
         "Forgot password?",
         """
 <form method="post">
@@ -53,12 +40,12 @@ def request_password_reset(
     if (origin := recovery_origin()) and (issued := issue_reset(db, email)):
         address, token = issued
         background.add_task(send_reset_email, address, f"{origin}/auth/reset-password#{token}")
-    return _page("Check your email", f"<p>{_REQUEST_COMPLETE}</p>")
+    return account_page("Check your email", f"<p>{_REQUEST_COMPLETE}</p>")
 
 
 def _reset_form(message: str = "", *, status_code: int = 200, token: str = ""):
     # A rejected password can be retried without resending the email.
-    return _page(
+    return account_page(
         "Reset password",
         f"""
 <p role="status" id="reset-message">{esc(message)}</p>
@@ -103,12 +90,12 @@ def reset_password(
     except ValueError as exc:
         return _reset_form(str(exc), status_code=400, token=token)
     if not redeemed:
-        return _page(
+        return account_page(
             "Reset link unavailable",
             '<p>This link is invalid or expired. <a href="/auth/forgot-password">Request a new link</a>.</p>',
             status_code=400,
         )
-    response = _page(
+    response = account_page(
         "Password updated",
         '<p>Sign in using your new password. <a href="/dashboard">Open the dashboard</a> or return to your MCP client.</p>',
     )

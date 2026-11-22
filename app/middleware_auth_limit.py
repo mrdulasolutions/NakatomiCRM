@@ -17,6 +17,8 @@ _LIMIT_PATHS = frozenset(
         "/auth/login",
         "/auth/forgot-password",
         "/auth/reset-password",
+        "/auth/accept-invitation",
+        "/dashboard/members/invitations",
         "/auth/signup",
         "/oauth/authorize",
         "/oauth/register",

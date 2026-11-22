@@ -198,6 +198,18 @@ class Membership(Base, TimestampMixin):
     user: Mapped[User] = relationship(back_populates="memberships")
 
 
+class WorkspaceInvitation(Base):
+    __tablename__ = "workspace_invitations"
+
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    digest: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class BrowserSession(Base):
     __tablename__ = "browser_sessions"
 
