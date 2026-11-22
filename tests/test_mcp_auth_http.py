@@ -80,5 +80,5 @@ def test_oauth_protected_resource_mcp_path(client):
     assert r.status_code == 200
     body = r.json()
     assert "authorization_servers" in body
-    assert body.get("scopes_supported") == ["mcp", "mcp:write"]
+    assert body.get("scopes_supported") == ["mcp", "mcp:write", "mcp:export"]
     assert body["resource"].endswith("/mcp")

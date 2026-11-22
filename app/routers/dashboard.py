@@ -146,6 +146,7 @@ _DASHBOARD_HTML = (
         <label for="agent-name">Agent name</label>
         <input id="agent-name" required maxlength="120" />
         <label><input id="agent-write" type="checkbox" /> Allow CRM writes</label>
+        <label><input id="agent-export" type="checkbox" /> Allow workspace ZIP exports</label>
         <button type="submit">Create credential</button>
       </form>
       <p id="agent-message" role="status"></p>
@@ -565,6 +566,7 @@ document.getElementById("agent-form").onsubmit = async event => {
     const result = await sessionRequest("/dashboard/agents", "POST", {
       name: document.getElementById("agent-name").value,
       can_write: document.getElementById("agent-write").checked,
+      can_export: document.getElementById("agent-export").checked,
     });
     output.textContent = result.token;
     document.getElementById("test-agent").hidden = false;
@@ -656,6 +658,7 @@ class WorkspaceChoice(BaseModel):
 class AgentSetup(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     can_write: bool = False
+    can_export: bool = False
 
 
 @router.post("/dashboard/session")
@@ -780,14 +783,15 @@ def create_dashboard_agent(
     token, prefix, digest = generate_api_key()
     scope = "mcp mcp:write" if body.can_write else "mcp"
     role = MemberRole.member if body.can_write else MemberRole.readonly
+    scopes = oauth_scopes(f"{scope} mcp:export" if body.can_export else scope, role)
     key = ApiKey(
         workspace_id=p.workspace.id,
         name=body.name.strip() or "Agent",
         prefix=prefix,
         key_hash=digest,
         role=role,
-        scopes=oauth_scopes(scope, role),
-        data={"agent": True},
+        scopes=scopes,
+        data={"agent": True, "allow_export": body.can_export},
     )
     db.add(key)
     db.commit()

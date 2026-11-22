@@ -92,7 +92,7 @@ def authorization_server_metadata(request: Request) -> dict:
         "token_endpoint": f"{iss}/oauth/token",
         "revocation_endpoint": f"{iss}/oauth/revoke",
         "registration_endpoint": f"{iss}/oauth/register",
-        "scopes_supported": ["mcp", "mcp:write"],
+        "scopes_supported": ["mcp", "mcp:write", "mcp:export"],
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "token_endpoint_auth_methods_supported": ["none"],
@@ -107,7 +107,7 @@ def _protected_resource_body(request: Request) -> dict:
     return {
         "resource": f"{iss}/mcp",
         "authorization_servers": [iss],
-        "scopes_supported": ["mcp", "mcp:write"],
+        "scopes_supported": ["mcp", "mcp:write", "mcp:export"],
         "bearer_methods_supported": ["header"],
     }
 
@@ -176,7 +176,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> dict:
     if (
         not set(grant_types) <= {"authorization_code", "refresh_token"}
         or response_types != ["code"]
-        or not set(scopes) <= {"mcp", "mcp:write"}
+        or not set(scopes) <= {"mcp", "mcp:write", "mcp:export"}
     ):
         raise HTTPException(400, "Unsupported OAuth registration parameters")
 
@@ -361,7 +361,9 @@ def _workspaces(db: Session, user_id: str) -> list[Workspace]:
 def _validate_request(request, client, response_type, scope, challenge, method, resource) -> str:
     if response_type != "code" or method != "S256" or not re.fullmatch(r"[A-Za-z0-9_-]{43}", challenge):
         raise HTTPException(400, "Authorization code with PKCE S256 required")
-    if not scope.split() or not set(scope.split()) <= (set(client.scopes) & {"mcp", "mcp:write"}):
+    if not scope.split() or not set(scope.split()) <= (
+        set(client.scopes) & {"mcp", "mcp:write", "mcp:export"}
+    ):
         raise HTTPException(400, "Invalid scope")
     expected = f"{_issuer(request)}/mcp"
     if resource and resource != expected:

@@ -48,3 +48,16 @@ Workspace owners and admins can open **Connect an agent** to copy the MCP URL, i
 Existing OAuth access tokens with legacy wildcard permissions are retired during upgrade. Clients that have a valid refresh token and their registered client ID can renew. Reconnect clients that cannot refresh. Workspace API keys issued outside OAuth continue to work.
 
 See [SSO setup](SSO.md) for provider callbacks.
+
+## Export a workspace through an agent
+
+Ask a connected agent to **export this workspace as a ZIP for Railway**, a VPS,
+or local use. The agent calls `export_workspace_zip` and returns a browser
+download link valid for 10 minutes. Share that link only with the intended
+recipient. The download is generated from the current workspace when opened.
+
+The ZIP includes the portable workspace JSON, a manifest, and restore
+instructions for the selected target. Ask to include attachments or timeline
+history if you need them. An owner or admin can enable **Allow workspace ZIP exports** when creating a
+headless agent credential. Interactive OAuth agents must request `mcp:export` and receive owner or admin
+approval. Attachment bytes also require `files:read`.

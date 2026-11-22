@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-MCP_TOOLS_SCHEMA_VERSION = "1.3"
+MCP_TOOLS_SCHEMA_VERSION = "1.4"
 
 # Compound / Agent OS tools added in 1.0.10 — no sunset yet.
 MCP_TOOLS_MANIFEST: dict = {
@@ -10,6 +10,7 @@ MCP_TOOLS_MANIFEST: dict = {
     "transport": "streamable-http",
     "path": "/mcp",
     "tools": {
+        "export_workspace_zip": {"since": "1.0.10", "scopes": ["export:read"]},
         "load_context": {"since": "1.0", "scopes": ["authenticated"]},
         "entity_context": {"since": "1.0.10", "scopes": ["timeline:read", "resource reads per section"]},
         "morning_briefing": {"since": "1.0", "scopes": ["tasks:read", "deals:read", "approvals:read"]},

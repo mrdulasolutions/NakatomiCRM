@@ -16,7 +16,9 @@ def oauth_metadata(key: ApiKey) -> dict:
 
 
 def oauth_scopes(scope: str, role: MemberRole) -> list[str]:
-    allowed = set(all_read_scopes()) - {"workspace:read", "email:read"}
+    allowed = set(all_read_scopes()) - {"workspace:read", "email:read", "export:read"}
+    if "mcp:export" in scope.split():
+        allowed.add("export:read")
     if "mcp:write" in scope.split():
         allowed.update(set(all_write_scopes()) - {"workspace:write", "webhooks:write", "email:write"})
     role_scopes = default_scopes_for_role(role)

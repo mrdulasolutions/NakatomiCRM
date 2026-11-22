@@ -86,6 +86,14 @@ All `update_*` tools added for [#27](https://github.com/mrdulasolutions/Nakatomi
 
 `update_contact` / `update_company` keep their original `updates: dict` signature.
 
+## Downloadable workspace exports
+
+When a human requests a workspace ZIP, call `export_workspace_zip` with the
+target `railway`, `vps`, or `local`. Return the browser download URL only to the
+intended recipient. It expires after 10 minutes. The tool requires a dedicated
+export-enabled credential or explicit owner/admin OAuth consent for `mcp:export`.
+Optional attachment bytes require `files:read`.
+
 ## Claude Desktop (custom connector, OAuth)
 
 Open *Settings → Connectors → Add custom connector*:

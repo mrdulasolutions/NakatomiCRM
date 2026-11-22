@@ -72,6 +72,12 @@ from app.services.entity_patch import (
     apply_task_patch,
     merge_json_data,
 )
+from app.services.export_archive import (
+    DOWNLOAD_SECONDS,
+    ExportTarget,
+    can_export_archive,
+    issue_download_grant,
+)
 from app.services.ingest import adapters as _ingest_adapters  # noqa: F401  — registers adapters
 from app.services.ingest.base import run_ingest
 from app.services.memory import enabled_connectors, get_connector
@@ -3620,6 +3626,45 @@ def _serialize(obj: Any) -> dict:
         else:
             out[col.name] = v
     return out
+
+
+@mcp.tool()
+def export_workspace_zip(
+    ctx: Context,
+    target: ExportTarget = "local",
+    include_timeline: bool = False,
+    include_files: bool = False,
+) -> dict:
+    """Create a short-lived browser download link for a portable workspace ZIP.
+
+    Use this when a human requests a workspace export for Railway, a VPS, or
+    local use. Send the returned download URL to that human. The archive is
+    generated when downloaded and may contain sensitive CRM data. File bytes
+    and timeline history are optional. Requires export:read and workspace
+    owner/admin approval or a dedicated agent credential authorized for exports.
+    """
+    principal, db = _principal_from_ctx(ctx)
+    try:
+        if not can_export_archive(principal.role, principal.api_key):
+            raise RuntimeError("Workspace owner, admin, or explicitly export-enabled agent required")
+        _require_scopes(principal, "export:read")
+        if include_files:
+            _require_scopes(principal, "files:read")
+        assert principal.api_key_id is not None
+        grant = issue_download_grant(
+            principal.workspace.id, principal.api_key_id, target, include_timeline, include_files
+        )
+        request = ctx.request_context.request
+        origin = public_origin(request) if request is not None else _public_base_url()
+        return {
+            "download_url": f"{origin}/export/archive#{grant}",
+            "expires_in_seconds": DOWNLOAD_SECONDS,
+            "target": target,
+            "include_files": include_files,
+            "include_timeline": include_timeline,
+        }
+    finally:
+        db.close()
 
 
 def build_asgi_app():

@@ -297,7 +297,7 @@ def render_authorize_page(
     <h1>Authorize application</h1>
     <p class="lede">Sign in to grant <strong>{esc(client_name)}</strong> access to your workspace via MCP.</p>
     <div class="client-box">
-      Permissions: <span class="scope">{"Read and write" if "mcp:write" in scope.split() else "Read only"}</span><br />
+      Permissions: <span class="scope">{"Read and write" if "mcp:write" in scope.split() else "Read only"}{" · Workspace ZIP export" if "mcp:export" in scope.split() else ""}</span><br />
       Client: <strong>{esc(client_id[:12])}…</strong><br />
       Redirect: {esc(redirect_uri)}
     </div>
