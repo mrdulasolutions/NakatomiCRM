@@ -55,15 +55,15 @@ python -m app check-config
 
 ## Validate a release on staging
 
-Keep `DASHBOARD_ENABLED=false` and `MEMORY_CONNECTORS` empty on public
-installations pending the security fixes. Use a disposable workspace and
-a database backup to test migrations and restore. Verify the HTTPS discovery
-URL, complete an MCP connection, confirm the granted permissions, and test
-disconnect. Validate archive restoration against a separate destination and
-review any provider links or integration settings that need reconfiguration.
+Back up the database before upgrading. Verify the health check, migrations,
+dashboard sign-in, and workspace selection. In a disposable workspace, accept
+an invitation and verify that the teammate lands in the shared workspace.
+For email delivery, configure a verified sender and test both invitation and
+password reset emails. See the [dashboard setup](./DASHBOARD.md#invitation-delivery).
 
-The session dashboard and agent onboarding are pending in [PR #31](https://github.com/mrdulasolutions/NakatomiCRM/pull/31).
-Agent workspace archives are pending in [PR #32](https://github.com/mrdulasolutions/NakatomiCRM/pull/32).
+Verify HTTPS discovery, complete an MCP connection, confirm its granted
+permissions, and test disconnect. Dry-run archive restoration in a separate
+destination and verify attachments and provider references.
 
 After rotating `SECRET_KEY`, re-save workspace email config so IMAP/SMTP passwords re-encrypt.
 

@@ -1,6 +1,6 @@
 # Audit dashboard
 
-Use **`/dashboard`** to inspect workspace activity and manage agent connections.
+Use **`/dashboard`** to inspect workspace activity, manage team membership, and connect agents. The hosted instance is available at the [Railway dashboard](https://nakatomi-production-3c7aa7a7.up.railway.app/dashboard).
 
 **Wiki (screenshots + tour):** [GitHub Wiki — Dashboard](https://github.com/mrdulasolutions/NakatomiCRM/wiki/Dashboard)
 
@@ -8,7 +8,7 @@ Use **`/dashboard`** to inspect workspace activity and manage agent connections.
 
 ## Sign in
 
-Open **`/dashboard`** and sign in with your Nakatomi email and password or a configured Google or GitHub provider. Select a workspace if you belong to more than one. The server stores your session and invalidates it when you sign out. Set `DASHBOARD_ENABLED=false` to disable the dashboard.
+Open **`/dashboard`** and sign in with your Nakatomi email and password or a configured Google or GitHub provider. Select a workspace if you belong to more than one. The server stores your session and invalidates it when you sign out. The dashboard is enabled by default. Set `DASHBOARD_ENABLED=false` to disable it.
 
 For Railway, configure `ENVIRONMENT=production` and a strong `SECRET_KEY`. Set `PUBLIC_BASE_URL` to your canonical HTTPS origin when using a custom domain. The app otherwise uses the Railway service domain. Use that same origin for the provider callback URLs.
 

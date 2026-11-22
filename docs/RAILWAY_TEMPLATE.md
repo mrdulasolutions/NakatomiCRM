@@ -17,7 +17,7 @@ fallback is still in git history if we ever need to go back to it.
 | --- | --- |
 | One-click URL | https://railway.com/deploy/nakatomicrm (**PUBLISHED**) |
 | Demo / source project | https://railway.com/project/f5806f53-6506-4dfc-8b9e-6dd826ee46d9 (`NakatomiCRM`) |
-| Public demo domain | https://nakatomi-production.up.railway.app |
+| Public demo domain | https://nakatomi-production-3c7aa7a7.up.railway.app |
 | App git | `mrdulasolutions/NakatomiCRM@main` (Dockerfile + `railway.toml`) |
 | Marketplace metadata | Sync env vars + republish when [`.env.example`](../.env.example) changes (see checklist below) |
 | Code on new installs | Pulled from **GitHub `main`** at deploy time — keep `main` green |
@@ -105,7 +105,7 @@ account or R2 setup required — it's all inside Railway.
 | `SUPERMEMORY_API_KEY` | (empty, sensitive) | | |
 | `GBRAIN_MCP_URL` | (empty) | | |
 | `GBRAIN_TOKEN` | (empty, sensitive) | | |
-| `DASHBOARD_ENABLED` | Set `false` on public deployments | | Session sign-in is pending. Validate the dashboard on staging before enabling it publicly. |
+| `DASHBOARD_ENABLED` | `true` | | Enables the account-based dashboard and workspace membership controls. |
 | `BOOTSTRAP_TOKEN` | (empty, sensitive) | | Recommended when the deploy URL may sit idle before first claim (`?token=`). |
 | `API_KEY_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `120` in production (`check-config` warns when `0`). |
 | `AUTH_RATE_LIMIT_PER_MINUTE` | `60` | | Per endpoint and source IP for login, OAuth authorization and registration, and bootstrap. |
@@ -114,7 +114,8 @@ account or R2 setup required — it's all inside Railway.
 | `WEBHOOK_TIMEOUT_SECONDS` | `10` | | |
 | `WEBHOOK_MAX_RETRIES` | `3` | | |
 | `PUBLIC_BASE_URL` | (empty) | | Set to the public HTTPS origin after first deploy (SSO / OAuth redirects). |
-| `RECOVERY_RESEND_API_KEY` | (empty) | | Optional HTTPS mail for password recovery and workspace invitations. Set `RECOVERY_FROM_ADDRESS` to a verified sender. See [DASHBOARD.md](./DASHBOARD.md#password-recovery). |
+| `RECOVERY_RESEND_API_KEY` | (empty, sensitive) | | Optional HTTPS mail for invitations and password recovery. |
+| `RECOVERY_FROM_ADDRESS` | (empty) | | Verified sender for account emails. See [invitation delivery](./DASHBOARD.md#invitation-delivery). |
 | `OTEL_ENABLED` | `false` | | Optional OpenTelemetry ([OBSERVABILITY.md](./OBSERVABILITY.md)). |
 | `OTEL_SERVICE_NAME` | `nakatomi` | | |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | (empty) | | e.g. collector OTLP/HTTP base URL. |
@@ -145,7 +146,7 @@ With the published template:
    vars pre-filled; `SECRET_KEY` generated. User only picks a project
    name + region.
 3. Deploy. 60–90s later, `https://<name>.up.railway.app/health`
-   returns `{"ok":true,"version":"1.0.6",…}` and `/mcp/` speaks streamable HTTP.
+   returns `{"ok":true,"version":"0.0.0.1",…}` and `/mcp/` speaks streamable HTTP.
 4. Open the public URL: **branded welcome** at `/` creates the first workspace,
    owner account, and API key in one form (key shown once). OAuth authorize
    uses the same Nakatomi Plaza UI at `/oauth/authorize`.
