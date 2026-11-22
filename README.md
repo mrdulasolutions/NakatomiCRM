@@ -571,7 +571,7 @@ python -m app health --deep
 python -m app check-config
 ```
 
-Optional local audit UI: set `DASHBOARD_ENABLED=true` and open `/dashboard` (auto-enabled in development when unset).
+Open `/dashboard` and sign in with your Nakatomi account. Set `DASHBOARD_ENABLED=false` to disable the dashboard.
 
 ---
 

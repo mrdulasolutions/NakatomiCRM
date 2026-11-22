@@ -198,6 +198,15 @@ class Membership(Base, TimestampMixin):
     user: Mapped[User] = relationship(back_populates="memberships")
 
 
+class BrowserSession(Base):
+    __tablename__ = "browser_sessions"
+
+    digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class ApiKey(Base, TimestampMixin):
     """API keys scoped to a workspace. Optionally associated with a user (acts as that user)."""
 
@@ -981,6 +990,7 @@ class OAuthCode(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     redirect_uri: Mapped[str] = mapped_column(String(2048), nullable=False)
+    resource: Mapped[str | None] = mapped_column(String(2048))
     code_challenge: Mapped[str] = mapped_column(String(255), nullable=False)
     code_challenge_method: Mapped[str] = mapped_column(String(16), nullable=False)
     scope: Mapped[str] = mapped_column(String(255), default="mcp", nullable=False)

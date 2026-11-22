@@ -66,6 +66,12 @@ def _truncate_between_tests() -> Iterator[None]:
         conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
 
 
+@pytest.fixture(scope="session")
+def mcp_client():
+    with TestClient(app) as client:
+        yield client
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)

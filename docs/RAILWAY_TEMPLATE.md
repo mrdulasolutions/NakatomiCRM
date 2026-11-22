@@ -94,10 +94,10 @@ account or R2 setup required — it's all inside Railway.
 | `SUPERMEMORY_API_KEY` | (empty, sensitive) | | |
 | `GBRAIN_MCP_URL` | (empty) | | |
 | `GBRAIN_TOKEN` | (empty, sensitive) | | |
-| `DASHBOARD_ENABLED` | `false` | | Don't turn on in public deployments unless the dashboard is behind auth. |
+| `DASHBOARD_ENABLED` | `true` | | Browser users sign in with a Nakatomi account. Set false to disable the dashboard. |
 | `BOOTSTRAP_TOKEN` | (empty, sensitive) | | Recommended when the deploy URL may sit idle before first claim (`?token=`). |
 | `API_KEY_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `120` in production (`check-config` warns when `0`). |
-| `AUTH_RATE_LIMIT_PER_MINUTE` | `0` | | Recommend `30` for `/auth/login`, `/bootstrap` in production. |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | `60` | | Per endpoint and source IP for login, OAuth authorization and registration, and bootstrap. |
 | `CORS_ORIGINS` | `*` | | Prefer explicit origins in production. |
 | `WEBHOOK_WORKER_ENABLED` | `true` | | |
 | `WEBHOOK_TIMEOUT_SECONDS` | `10` | | |

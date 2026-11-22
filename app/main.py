@@ -185,7 +185,7 @@ _TAGS_METADATA = [
     },
     {
         "name": "dashboard",
-        "description": "Local audit UI. Off by default; enable with `DASHBOARD_ENABLED=true`.",
+        "description": "Workspace dashboard with browser sign-in and agent connection management.",
     },
     {
         "name": "approvals",

@@ -18,16 +18,18 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.browser_sessions import public_origin, set_session
 from app.config import settings
 from app.db import get_db
 from app.models import MemberRole, Membership, User, Workspace
@@ -47,26 +49,30 @@ def _enabled_providers() -> dict[str, bool]:
     }
 
 
-def _public_base(request: Request) -> str:
-    if settings.PUBLIC_BASE_URL.strip():
-        return settings.PUBLIC_BASE_URL.strip().rstrip("/")
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
-    return f"{proto}://{host}"
+_STATE_COOKIE = "nk_sso_state"
 
 
-def _sign_state(provider: str, nonce: str) -> str:
-    payload = {"p": provider, "n": nonce}
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
-
-
-def _verify_state(state: str, provider: str) -> None:
+def _verify_state(request: Request, state: str, provider: str) -> dict:
+    fingerprint = request.cookies.get(_STATE_COOKIE, "")
+    if not secrets.compare_digest(fingerprint, _state_fingerprint(state)):
+        raise HTTPException(400, "Invalid SSO browser state")
     try:
-        data = jwt.decode(state, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        data = jwt.decode(
+            state, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM], options={"require": ["exp"]}
+        )
     except jwt.InvalidTokenError as exc:
-        raise HTTPException(status_code=400, detail="invalid SSO state") from exc
+        raise HTTPException(400, "Invalid SSO state") from exc
     if data.get("p") != provider or not data.get("n"):
-        raise HTTPException(status_code=400, detail="SSO state provider mismatch")
+        raise HTTPException(400, "SSO state provider mismatch")
+    return data
+
+
+def _dashboard_destination(return_to: str | None) -> str:
+    if return_to:
+        url = urlsplit(return_to)
+        if not url.scheme and not url.netloc and url.path == "/oauth/authorize":
+            return url._replace(fragment="").geturl()
+    return "/dashboard"
 
 
 def _slugify(email: str) -> str:
@@ -87,7 +93,9 @@ def list_providers() -> dict[str, Any]:
 
 
 @router.get("/{provider}")
-def sso_start(provider: str, request: Request) -> RedirectResponse:
+def sso_start(
+    provider: str, request: Request, dashboard: bool = False, return_to: str | None = None
+) -> RedirectResponse:
     provider = provider.lower()
     if provider not in _PROVIDERS:
         raise HTTPException(status_code=404, detail=f"unknown SSO provider: {provider}")
@@ -95,8 +103,17 @@ def sso_start(provider: str, request: Request) -> RedirectResponse:
         raise HTTPException(status_code=503, detail=f"SSO provider '{provider}' is not configured")
 
     nonce = secrets.token_urlsafe(16)
-    state = _sign_state(provider, nonce)
-    base = _public_base(request)
+    state = jwt.encode(
+        {
+            "p": provider,
+            "n": nonce,
+            "next": _dashboard_destination(return_to) if dashboard else None,
+            "exp": datetime.now(UTC) + timedelta(seconds=_STATE_TTL_SECONDS),
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    base = public_origin(request)
     redirect_uri = f"{base}/auth/sso/{provider}/callback"
 
     if provider == "google":
@@ -119,25 +136,36 @@ def sso_start(provider: str, request: Request) -> RedirectResponse:
         }
         url = "https://github.com/login/oauth/authorize?" + urlencode(params)
 
-    return RedirectResponse(url, status_code=302)
+    response = RedirectResponse(url, status_code=302, headers={"Cache-Control": "no-store"})
+    response.set_cookie(
+        _STATE_COOKIE,
+        _state_fingerprint(state),
+        max_age=_STATE_TTL_SECONDS,
+        httponly=True,
+        secure=base.startswith("https://"),
+        samesite="lax",
+        path="/auth/sso",
+    )
+    return response
 
 
 @router.get("/{provider}/callback", response_model=TokenResponse)
 def sso_callback(
     provider: str,
     request: Request,
+    response: Response,
     code: str = Query(...),
     state: str = Query(...),
     db: Session = Depends(get_db),
-) -> TokenResponse:
+) -> TokenResponse | RedirectResponse:
     provider = provider.lower()
     if provider not in _PROVIDERS:
         raise HTTPException(status_code=404, detail=f"unknown SSO provider: {provider}")
     if not _enabled_providers().get(provider):
         raise HTTPException(status_code=503, detail=f"SSO provider '{provider}' is not configured")
-    _verify_state(state, provider)
+    state_data = _verify_state(request, state, provider)
 
-    base = _public_base(request)
+    base = public_origin(request)
     redirect_uri = f"{base}/auth/sso/{provider}/callback"
     profile = _exchange_code(provider, code, redirect_uri)
     email = (profile.get("email") or "").lower().strip()
@@ -150,11 +178,15 @@ def sso_callback(
     if not user:
         user = db.scalar(select(User).where(User.email == email))
         if user:
+            if not profile.get("email_verified") or user.sso_subject:
+                raise HTTPException(403, "An administrator must link this identity")
             user.sso_provider = provider
             user.sso_subject = subject
             if display_name and not user.display_name:
                 user.display_name = display_name
         else:
+            if not profile.get("email_verified"):
+                raise HTTPException(403, "A verified provider email is required")
             user = User(
                 email=email,
                 password_hash=None,
@@ -194,6 +226,18 @@ def sso_callback(
     db.commit()
     db.refresh(user)
 
+    if state_data.get("next"):
+        response = RedirectResponse(_dashboard_destination(state_data["next"]), status_code=303)
+        set_session(request, response, db, user.id, ws.id)
+        response.delete_cookie(
+            _STATE_COOKIE, path="/auth/sso", httponly=True, secure=base.startswith("https://"), samesite="lax"
+        )
+        return response
+
+    response.delete_cookie(
+        _STATE_COOKIE, path="/auth/sso", httponly=True, secure=base.startswith("https://"), samesite="lax"
+    )
+    response.headers["Cache-Control"] = "no-store"
     token = create_access_token(user.id, extra={"ws": ws.id})
     return TokenResponse(
         access_token=token,
@@ -237,6 +281,7 @@ def _google_profile(code: str, redirect_uri: str) -> dict[str, Any]:
         return {
             "subject": data.get("sub"),
             "email": data.get("email"),
+            "email_verified": data.get("email_verified") is True,
             "name": data.get("name") or data.get("given_name"),
         }
 
@@ -263,20 +308,13 @@ def _github_profile(code: str, redirect_uri: str) -> dict[str, Any]:
         if ui.status_code >= 400:
             raise HTTPException(status_code=400, detail=f"GitHub user error: {ui.text[:200]}")
         data = ui.json()
-        email = data.get("email")
-        if not email:
-            emails_r = client.get("https://api.github.com/user/emails", headers=auth)
-            if emails_r.status_code < 400:
-                emails = emails_r.json() or []
-                primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
-                email = (primary or (emails[0] if emails else {})).get("email")
-        subject = str(data.get("id") or "")
-        # Stable fallback if GitHub hides email (rare with user:email scope).
-        if not email and subject:
-            email = f"github-{subject}@users.noreply.github.com"
+        emails_r = client.get("https://api.github.com/user/emails", headers=auth)
+        emails = emails_r.json() if emails_r.is_success else []
+        email = next((e.get("email") for e in emails if e.get("primary") and e.get("verified")), None)
         return {
-            "subject": subject,
+            "subject": str(data.get("id") or ""),
             "email": email,
+            "email_verified": bool(email),
             "name": data.get("name") or data.get("login"),
         }
 

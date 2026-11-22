@@ -277,22 +277,32 @@ def render_authorize_page(
     email: str = "",
     error: str | None = None,
     workspace_select_html: str = "",
+    resource: str = "",
+    signed_in: bool = False,
+    sso_links: str = "",
 ) -> str:
     error_html = f'<div class="alert err">{esc(error)}</div>' if error else ""
+    login_fields = (
+        ""
+        if signed_in
+        else f"""
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required autofocus value="{esc(email)}" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required />
+    """
+    )
     body = f"""
     <p class="mark">Nakatomi CRM</p>
     <h1>Authorize application</h1>
     <p class="lede">Sign in to grant <strong>{esc(client_name)}</strong> access to your workspace via MCP.</p>
     <div class="client-box">
-      Scope: <span class="scope">{esc(scope)}</span><br />
+      Permissions: <span class="scope">{"Read and write" if "mcp:write" in scope.split() else "Read only"}</span><br />
       Client: <strong>{esc(client_id[:12])}…</strong><br />
       Redirect: {esc(redirect_uri)}
     </div>
     <form method="post" action="/oauth/authorize">
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" required autofocus value="{esc(email)}" />
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" required />
+      {login_fields}
       {workspace_select_html}
       {error_html}
       <input type="hidden" name="client_id" value="{esc(client_id)}" />
@@ -302,8 +312,10 @@ def render_authorize_page(
       <input type="hidden" name="scope" value="{esc(scope)}" />
       <input type="hidden" name="code_challenge" value="{esc(code_challenge)}" />
       <input type="hidden" name="code_challenge_method" value="{esc(code_challenge_method)}" />
-      <button type="submit">Sign in &amp; authorize</button>
+      <input type="hidden" name="resource" value="{esc(resource)}" />
+      <button type="submit">{"Authorize" if signed_in else "Sign in &amp; authorize"}</button>
     </form>
+    {sso_links}
     <p class="foot">Secured with OAuth 2.1 and PKCE</p>
 """
     return _shell(title="Authorize", body=body)

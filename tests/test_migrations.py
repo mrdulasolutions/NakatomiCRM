@@ -64,6 +64,7 @@ def test_alembic_upgrade_head():
     assert "workspaces" in tables
     assert "api_keys" in tables
     assert "approval_requests" in tables
+    assert "browser_sessions" in tables
     with eng.connect() as conn:
         cols = {
             r[0]

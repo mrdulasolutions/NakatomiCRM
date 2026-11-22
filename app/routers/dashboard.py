@@ -1,21 +1,32 @@
-"""Local audit dashboard. Off by default. Enable with DASHBOARD_ENABLED=true.
-
-This is NOT a rich product UI. It's a minimal HTML page that fetches the REST
-API and shows a read-only view of activity, pipelines, and webhook state.
-
-Binding: we do not restrict the bind host here (that's a deployment concern).
-The skill that launches this via docker compose sets up a local-only binding.
-For Railway/prod, gate it behind your own reverse proxy — the dashboard
-expects a workspace API key in a cookie named ``nk_dashboard_key``.
-"""
+"""Workspace dashboard and browser-authenticated agent management."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from datetime import UTC, datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import String, cast, or_, select
+from sqlalchemy.orm import Session
 
 from app.brand_pages import dashboard_stylesheet, render_dashboard_disabled
+from app.browser_sessions import (
+    browser_principal,
+    clear_session,
+    public_origin,
+    require_same_origin,
+    set_session,
+)
 from app.config import settings
+from app.db import get_db
+from app.deps import Principal
+from app.models import ApiKey, MemberRole, Membership, OAuthClient, Workspace
+from app.oauth_grants import oauth_metadata, oauth_scopes, revoke_grant
+from app.routers.auth import login
+from app.schemas import LoginRequest
+from app.security import generate_api_key
 
 router = APIRouter(tags=["dashboard"])
 
@@ -47,21 +58,26 @@ _DASHBOARD_HTML = (
     <button type="button" data-view="kanban">Kanban</button>
     <button type="button" data-view="webhooks">Webhooks</button>
     <button type="button" data-view="memory">Memory</button>
+    <button type="button" data-view="agents" id="agents-tab" hidden>Connect an agent</button>
   </nav>
   <span style="flex:1"></span>
+  <select id="workspace-picker" aria-label="Workspace" hidden></select>
   <button type="button" id="logout" class="dash-btn-ghost">Sign out</button>
 </header>
 
 <div id="auth-wrap" class="dash-auth-wrap" hidden>
   <div id="auth" class="dash-auth">
     <p class="mark">Nakatomi CRM</p>
-    <h2>Connect your API key</h2>
-    <p class="lede">Read-only view of timeline, pipelines, webhooks, and memory links. Paste a workspace key with list scopes.</p>
-    <label for="key">API key</label>
-    <input id="key" type="password" placeholder="nk_..." autocomplete="off" />
+    <h2>Sign in</h2>
+    <form id="login-form">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Sign in</button>
+    </form>
+    <div id="sso-links"></div>
     <div id="auth-error" class="alert err" hidden role="alert"></div>
-    <button type="button" id="save">Use key</button>
-    <p class="foot">Stored in a cookie on this path only. Sign out clears it.</p>
   </div>
 </div>
 
@@ -90,6 +106,7 @@ _DASHBOARD_HTML = (
         <option value="dead">Dead</option>
       </select>
       <span style="flex:1"></span>
+  <select id="workspace-picker" aria-label="Workspace" hidden></select>
       <button type="button" id="wh-refresh" class="dash-btn-ghost">Refresh</button>
     </div>
     <div id="wh-root"></div>
@@ -99,6 +116,7 @@ _DASHBOARD_HTML = (
       <span>Connectors</span>
       <span id="mem-connectors" class="accent">—</span>
       <span style="flex:1"></span>
+  <select id="workspace-picker" aria-label="Workspace" hidden></select>
       <span>Filter</span>
       <select id="mem-connector-filter" class="dash-select">
         <option value="">All connectors</option>
@@ -118,40 +136,60 @@ _DASHBOARD_HTML = (
     <div id="mem-total" class="mem-total"></div>
     <div id="mem-root"></div>
   </div>
+  <div id="view-agents" class="dash-view">
+    <section class="dash-section">
+      <h2>Connect an agent</h2>
+      <p>Use this Streamable HTTP URL for Grok, DOTs, or another MCP client.</p>
+      <code id="agent-url"></code>
+      <p>Browser-based clients can request OAuth consent. For Grok API or a headless bot, create a dedicated credential and store it in the bot’s secret store.</p>
+      <form id="agent-form">
+        <label for="agent-name">Agent name</label>
+        <input id="agent-name" required maxlength="120" />
+        <label><input id="agent-write" type="checkbox" /> Allow CRM writes</label>
+        <button type="submit">Create credential</button>
+      </form>
+      <p id="agent-message" role="status"></p>
+      <code id="agent-token"></code>
+      <button type="button" id="test-agent" hidden>Test connection</button>
+      <ul id="agent-list"></ul>
+    </section>
+  </div>
 </main>
 </div>
 
 <script>
-const COOKIE = "nk_dashboard_key";
-const STORAGE_KEY = "nk_dashboard_key";
-
-function getKey() {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored) return stored;
-  } catch (e) { /* private mode */ }
-  const m = document.cookie.match(/(?:^|; )nk_dashboard_key=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
-}
-function cookieTail() {
-  const secure = location.protocol === "https:" ? ";Secure" : "";
-  return `path=/;SameSite=Lax${secure}`;
+async function sessionRequest(path, method, data) {
+  const response = await fetch(path, {
+    method,
+    headers: data ? {"Content-Type": "application/json"} : {},
+    body: data ? JSON.stringify(data) : undefined,
+    cache: "no-store",
+  });
+  if (response.ok) return response.status === 204 ? null : response.json();
+  const body = await response.json().catch(() => ({}));
+  throw Object.assign(new Error(typeof body.detail === "string" ? body.detail : "Request failed"), {status: response.status});
 }
 
-function setKey(k) {
-  try { sessionStorage.setItem(STORAGE_KEY, k); } catch (e) { /* ignore */ }
-  document.cookie = `${COOKIE}=${encodeURIComponent(k)};${cookieTail()};max-age=2592000`;
-}
-
-function signOut() {
-  try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
-  const tail = cookieTail();
-  document.cookie = `${COOKIE}=;${tail};max-age=0`;
-  document.cookie = `${COOKIE}=;${tail};max-age=0;expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  document.getElementById("key").value = "";
-  document.getElementById("auth-error").hidden = true;
-  document.getElementById("ws").textContent = "";
-  setDashboardAuth(true);
+async function loadAgents() {
+  const {url, agents} = await sessionRequest("/dashboard/agents", "GET");
+  document.getElementById("agent-url").textContent = url;
+  const list = document.getElementById("agent-list");
+  list.replaceChildren();
+  for (const agent of agents) {
+    const item = document.createElement("li");
+    const access = (agent.scopes || []).some(scope => scope.endsWith(":write")) ? "Read and write" : "Read only";
+    item.textContent = `${agent.name} · ${access} · ${agent.last_used_at ? new Date(agent.last_used_at).toLocaleString() : "Never used"} `;
+    const button = document.createElement("button");
+    button.textContent = "Disconnect";
+    button.onclick = async () => {
+      try {
+        await sessionRequest(`/dashboard/agents/${agent.id}`, "DELETE");
+        await loadAgents();
+      } catch (error) { document.getElementById("agent-message").textContent = error.message; }
+    };
+    item.append(button);
+    list.append(item);
+  }
 }
 
 function showAuthError(msg) {
@@ -168,9 +206,7 @@ function setDashboardAuth(showLogin) {
 }
 
 async function api(path) {
-  const key = getKey();
-  if (!key) throw new Error("No API key saved");
-  const r = await fetch(path, { headers: { Authorization: `Bearer ${key}` } });
+  const r = await fetch(path, { headers: { "X-Nakatomi-Dashboard": "1" }, cache: "no-store" });
   if (!r.ok) {
     let detail = `${path} → HTTP ${r.status}`;
     try {
@@ -457,43 +493,125 @@ function wireUi() {
   document.getElementById("mem-entity-filter").addEventListener("change", () => loadMemory());
 }
 
+try { sessionStorage.removeItem("nk_dashboard_key"); } catch (_) {}
+
 async function init() {
-  if (!getKey()) {
-    setDashboardAuth(true);
-    return;
-  }
-  setDashboardAuth(false);
-  document.getElementById("auth-error").hidden = true;
   try {
+    const session = await sessionRequest("/dashboard/session", "GET");
+    const picker = document.getElementById("workspace-picker");
+    picker.replaceChildren(...session.workspaces.map(ws => new Option(ws.name, ws.id)));
+    picker.value = session.workspace_id;
+    picker.hidden = session.workspaces.length < 2;
+    const role = session.workspaces.find(ws => ws.id === session.workspace_id)?.role;
+    document.getElementById("agents-tab").hidden = !["owner", "admin"].includes(role);
+    document.getElementById("auth-error").hidden = true;
+    setDashboardAuth(false);
     await loadAudit();
-  } catch (e) {
-    console.error(e);
-    const status = e.status || 0;
-    if (status === 401) {
-      try { sessionStorage.removeItem(STORAGE_KEY); } catch (x) { /* ignore */ }
-      document.cookie = `${COOKIE}=;${cookieTail()};max-age=0`;
+    wireUi();
+  } catch (error) {
+    if (error.status === 401) {
+      document.getElementById("workspace-picker").hidden = true;
+      setDashboardAuth(true);
+      const links = document.getElementById("sso-links");
+      links.replaceChildren();
+      try {
+        const providers = await sessionRequest("/auth/sso/providers", "GET");
+        for (const name of ["google", "github"]) {
+          if (providers.enabled[name]) {
+            const link = document.createElement("a");
+            link.href = `/auth/sso/${name}?dashboard=true`;
+            link.textContent = name === "google" ? "Continue with Google" : "Continue with GitHub";
+            links.append(link, document.createElement("br"));
+          }
+        }
+      } catch (_) { /* Password login remains available. */ }
+    } else {
+      showAuthError(error.message);
     }
-    showAuthError(
-      status === 403
-        ? `${e.message} — use a key with * or read scopes for timeline, contacts, deals, tasks, webhooks.`
-        : e.message || "Could not load dashboard data."
-    );
-    return;
   }
-  wireUi();
 }
 
-document.getElementById("save").onclick = async () => {
-  const k = document.getElementById("key").value.trim();
-  if (!k.startsWith("nk_")) { alert("Expected an nk_… API key"); return; }
-  document.getElementById("auth-error").hidden = true;
-  setKey(k);
-  await init();
+document.getElementById("login-form").onsubmit = async event => {
+  event.preventDefault();
+  const password = document.getElementById("password");
+  try {
+    await sessionRequest("/dashboard/session", "POST", {email: document.getElementById("email").value, password: password.value});
+    await init();
+  } catch (error) { showAuthError(error.message); }
+  finally { password.value = ""; }
 };
-document.getElementById("logout").addEventListener("click", (e) => {
-  e.preventDefault();
-  signOut();
-});
+document.getElementById("logout").onclick = async () => {
+  try {
+    await sessionRequest("/dashboard/session", "DELETE");
+    window.location.reload();
+  } catch (error) { showAuthError(error.message); }
+};
+document.getElementById("workspace-picker").onchange = async event => {
+  try {
+    await sessionRequest("/dashboard/workspace", "POST", {workspace_id: event.target.value});
+    window.location.reload();
+  } catch (error) { showAuthError(error.message); }
+};
+document.getElementById("agents-tab").addEventListener("click", () => loadAgents().catch(error => {
+  document.getElementById("agent-message").textContent = error.message;
+}));
+document.getElementById("agent-form").onsubmit = async event => {
+  event.preventDefault();
+  const message = document.getElementById("agent-message");
+  const output = document.getElementById("agent-token");
+  output.textContent = "";
+  document.getElementById("test-agent").hidden = true;
+  try {
+    const result = await sessionRequest("/dashboard/agents", "POST", {
+      name: document.getElementById("agent-name").value,
+      can_write: document.getElementById("agent-write").checked,
+    });
+    output.textContent = result.token;
+    document.getElementById("test-agent").hidden = false;
+    message.textContent = "Copy this credential now. It will only be shown once.";
+    event.target.reset();
+    await loadAgents();
+  } catch (error) { message.textContent = error.message; }
+};
+
+document.getElementById("test-agent").onclick = async () => {
+  const token = document.getElementById("agent-token").textContent;
+  const message = document.getElementById("agent-message");
+  const headers = {
+    Accept: "application/json, text/event-stream",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+  async function send(method, params, id) {
+    const response = await fetch("/mcp", {
+      method: "POST", headers,
+      body: JSON.stringify({jsonrpc: "2.0", method, params, id}),
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`MCP ${method} returned HTTP ${response.status}`);
+    if (id === undefined) return {response};
+    const text = await response.text();
+    const data = text.startsWith("{") ? text : text.split("\\n").find(line => line.startsWith("data:"))?.slice(5);
+    const body = JSON.parse(data || "{}");
+    if (!body.result || body.result.isError) throw new Error(`MCP ${method} failed`);
+    return {response, result: body.result};
+  }
+  try {
+    const {response, result} = await send("initialize", {
+      protocolVersion: "2024-11-05", capabilities: {}, clientInfo: {name: "Nakatomi dashboard", version: "1"},
+    }, 1);
+    headers["MCP-Protocol-Version"] = result.protocolVersion;
+    const sessionId = response.headers.get("Mcp-Session-Id");
+    if (sessionId) headers["Mcp-Session-Id"] = sessionId;
+    await send("notifications/initialized");
+    await send("tools/call", {name: "list_pipelines", arguments: {}}, 2);
+    message.textContent = "Connection verified with a read-only MCP tool.";
+    await loadAgents();
+  } catch (error) { message.textContent = error.message; }
+  finally {
+    if (headers["Mcp-Session-Id"]) await fetch("/mcp", {method: "DELETE", headers}).catch(() => {});
+  }
+};
 
 init();
 </script>
@@ -507,4 +625,191 @@ init();
 def dashboard(request: Request) -> HTMLResponse:
     if not settings.DASHBOARD_ENABLED:
         return HTMLResponse(render_dashboard_disabled(), status_code=404)
-    return HTMLResponse(_DASHBOARD_HTML)
+    response = HTMLResponse(_DASHBOARD_HTML, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+    if request.cookies.get("nk_dashboard_key"):
+        response.delete_cookie("nk_dashboard_key")
+    return response
+
+
+def _require_dashboard() -> None:
+    if not settings.DASHBOARD_ENABLED:
+        raise HTTPException(404, "Dashboard is disabled")
+
+
+def _session_info(db: Session, user_id: str, workspace_id: str) -> dict:
+    workspaces = db.execute(
+        select(Workspace.id, Workspace.name, Membership.role)
+        .join(Membership)
+        .where(Membership.user_id == user_id)
+        .order_by(Workspace.name, Workspace.id)
+    )
+    return {
+        "workspace_id": workspace_id,
+        "workspaces": [{"id": row.id, "name": row.name, "role": row.role.value} for row in workspaces],
+    }
+
+
+class WorkspaceChoice(BaseModel):
+    workspace_id: UUID
+
+
+class AgentSetup(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    can_write: bool = False
+
+
+@router.post("/dashboard/session")
+def dashboard_login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    _require_dashboard()
+    require_same_origin(request)
+    login_result = login(body, db)
+    response = JSONResponse(_session_info(db, login_result.user_id, login_result.workspace_id))
+    set_session(request, response, db, login_result.user_id, login_result.workspace_id)
+    response.delete_cookie("nk_dashboard_key")
+    return response
+
+
+def _dashboard_user(request: Request, db: Session = Depends(get_db)) -> Principal:
+    _require_dashboard()
+    origin = request.headers.get("origin")
+    if origin and origin != public_origin(request):
+        raise HTTPException(403, "Same-origin request required")
+    principal = browser_principal(request, db)
+    if not principal or not principal.user:
+        raise HTTPException(401, "Sign in to Nakatomi")
+    return principal
+
+
+@router.get("/dashboard/session")
+def dashboard_session(db: Session = Depends(get_db), p: Principal = Depends(_dashboard_user)):
+    assert p.user is not None
+    return JSONResponse(_session_info(db, p.user.id, p.workspace.id), headers={"Cache-Control": "no-store"})
+
+
+@router.post("/dashboard/workspace")
+def dashboard_workspace(
+    body: WorkspaceChoice,
+    request: Request,
+    db: Session = Depends(get_db),
+    p: Principal = Depends(_dashboard_user),
+):
+    require_same_origin(request)
+    assert p.user is not None
+    workspace_id = str(body.workspace_id)
+    info = _session_info(db, p.user.id, workspace_id)
+    if not any(item["id"] == workspace_id for item in info["workspaces"]):
+        raise HTTPException(403, "Workspace membership required")
+    response = JSONResponse(info)
+    set_session(request, response, db, p.user.id, workspace_id)
+    return response
+
+
+@router.delete("/dashboard/session")
+def dashboard_logout(request: Request, db: Session = Depends(get_db)):
+    _require_dashboard()
+    require_same_origin(request)
+    response = Response(status_code=204)
+    clear_session(request, response, db)
+    return response
+
+
+def _agent_records(db: Session, workspace_id: str):
+    return db.scalars(
+        select(ApiKey)
+        .where(
+            ApiKey.workspace_id == workspace_id,
+            ApiKey.revoked_at.is_(None),
+            or_(
+                ApiKey.data["agent"].astext == "true",
+                ApiKey.data["oauth"]["kind"].astext == "access",
+                ApiKey.data["oauth"]["kind"].astext == "refresh",
+            ),
+        )
+        .order_by(ApiKey.created_at.desc())
+    )
+
+
+def _agent_admin(p: Principal = Depends(_dashboard_user)) -> Principal:
+    if p.role not in (MemberRole.owner, MemberRole.admin):
+        raise HTTPException(403, "Workspace owner or admin required")
+    return p
+
+
+@router.get("/dashboard/agents")
+def dashboard_agents(request: Request, db: Session = Depends(get_db), p: Principal = Depends(_agent_admin)):
+    agents = {}
+    client_names = {
+        item.id: item.name
+        for item in db.scalars(
+            select(OAuthClient)
+            .join(ApiKey, ApiKey.data["oauth"]["client_id"].astext == cast(OAuthClient.id, String))
+            .where(ApiKey.workspace_id == p.workspace.id)
+            .distinct()
+        )
+    }
+    now = datetime.now(UTC)
+    for key in _agent_records(db, p.workspace.id):
+        grant = oauth_metadata(key)
+        if key.expires_at and key.expires_at <= now and not grant:
+            continue
+        identity = grant.get("grant_id") or key.id
+        record = agents.setdefault(
+            identity,
+            {
+                "id": key.id,
+                "name": client_names.get(grant.get("client_id"), key.name),
+                "scopes": key.scopes,
+                "last_used_at": key.last_used_at,
+                "active": False,
+            },
+        )
+        if key.expires_at is None or key.expires_at > now:
+            record["active"] = True
+        if grant.get("kind") == "access":
+            record["scopes"] = key.scopes
+        if key.last_used_at and (not record["last_used_at"] or key.last_used_at > record["last_used_at"]):
+            record["last_used_at"] = key.last_used_at
+    return {"url": f"{public_origin(request)}/mcp", "agents": [r for r in agents.values() if r["active"]]}
+
+
+@router.post("/dashboard/agents", status_code=201)
+def create_dashboard_agent(
+    body: AgentSetup, request: Request, db: Session = Depends(get_db), p: Principal = Depends(_agent_admin)
+):
+    require_same_origin(request)
+    token, prefix, digest = generate_api_key()
+    scope = "mcp mcp:write" if body.can_write else "mcp"
+    role = MemberRole.member if body.can_write else MemberRole.readonly
+    key = ApiKey(
+        workspace_id=p.workspace.id,
+        name=body.name.strip() or "Agent",
+        prefix=prefix,
+        key_hash=digest,
+        role=role,
+        scopes=oauth_scopes(scope, role),
+        data={"agent": True},
+    )
+    db.add(key)
+    db.commit()
+    return JSONResponse(
+        {"token": token, "url": f"{public_origin(request)}/mcp"},
+        status_code=201,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.delete("/dashboard/agents/{key_id}")
+def disconnect_dashboard_agent(
+    key_id: UUID, request: Request, db: Session = Depends(get_db), p: Principal = Depends(_agent_admin)
+):
+    require_same_origin(request)
+    key = db.get(ApiKey, str(key_id))
+    if (
+        not key
+        or key.workspace_id != p.workspace.id
+        or not (oauth_metadata(key) or (key.data or {}).get("agent"))
+    ):
+        raise HTTPException(404, "Agent connection not found")
+    revoke_grant(db, key)
+    db.commit()
+    return Response(status_code=204)

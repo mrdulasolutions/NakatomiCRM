@@ -6,17 +6,11 @@ Read-only operator UI at **`/dashboard`**. Agents use MCP/REST; humans use the d
 
 ---
 
-## Enable
+## Sign in
 
-```bash
-DASHBOARD_ENABLED=true
-```
+Open **`/dashboard`** and sign in with your Nakatomi email and password or a configured Google or GitHub provider. Select a workspace if you belong to more than one. The server stores your session and invalidates it when you sign out. Set `DASHBOARD_ENABLED=false` to disable the dashboard.
 
-Auto-enabled in `ENVIRONMENT=development` when unset. Paste an API key at login (stored in path-scoped cookie). **Sign out** clears the cookie.
-
-Production example: https://nakatomi-production.up.railway.app/dashboard
-
----
+For Railway, configure `ENVIRONMENT=production` and a strong `SECRET_KEY`. Set `PUBLIC_BASE_URL` to your canonical HTTPS origin when using a custom domain. The app otherwise uses the Railway service domain. Use that same origin for the provider callback URLs.
 
 ## Views
 
@@ -43,16 +37,14 @@ The Memory tab distinguishes **`MEMORY_CONNECTORS`** (server adapters) from **li
 
 ---
 
-## Scopes
+## Connect an agent
 
-Use a read-capable key: `timeline:read`, entity reads, `webhooks:read`, `memory:read`, or `*`.
+Workspace owners and admins can open **Connect an agent** to copy the MCP URL, issue a dedicated headless credential, test a read-only tool, and disconnect credentials. Read-only is the default. Select **Allow CRM writes** when the bot needs to modify records.
 
----
+- **Grok API and headless DOTs:** point the runtime at the displayed HTTPS `/mcp` URL. Store the credential in the runtime’s secret store and pass it as MCP authorization. Displayed credentials can be copied once.
+- **Interactive DOTs and MCP clients:** use the same URL and approve the workspace and scopes in the browser. `mcp` grants reads and `mcp:write` requests CRM writes. Clients refresh delegated tokens with their registered client ID.
+- **Multiple Railway replicas:** validate your clients with `MCP_STATELESS_HTTP=true` before scaling so requests do not depend on in-memory session affinity.
 
-## Safety
+Existing OAuth access tokens with legacy wildcard permissions are retired during upgrade. Clients that have a valid refresh token and their registered client ID can renew. Reconnect clients that cannot refresh. Workspace API keys issued outside OAuth continue to work.
 
-Not a multi-user CRM UI. Cookie holds the raw key. Prefer local bind or reverse-proxy auth in production.
-
-Launch skill: [.claude/skills/nakatomi-dashboard](../.claude/skills/nakatomi-dashboard/SKILL.md)
-
-Implementation: `app/routers/dashboard.py`
+See [SSO setup](SSO.md) for provider callbacks.

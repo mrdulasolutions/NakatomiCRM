@@ -101,7 +101,7 @@ Open *Settings → Connectors → Add custom connector*:
   that only serves the welcome/discovery page and returns **405** on POST.
 
 Click *Connect*. Claude opens a browser tab, the Nakatomi login page
-appears, you sign in with your Nakatomi email + password, pick a workspace
+appears, you sign in with your Nakatomi account, pick a workspace
 if you're in more than one, and consent. Claude stores the tokens.
 
 No header to paste — Claude Desktop's connector UI doesn't expose that

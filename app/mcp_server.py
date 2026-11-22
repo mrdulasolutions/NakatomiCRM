@@ -18,6 +18,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -28,13 +29,15 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl, BaseModel, ValidationError
 from sqlalchemy import func, or_, select
+from starlette.datastructures import MutableHeaders
+from starlette.requests import Request
 
+from app.browser_sessions import public_origin
 from app.config import settings
 from app.db import SessionLocal
-from app.deps import Principal, mcp_idempotency
+from app.deps import Principal, _enforce_rate_limit, mcp_idempotency
 from app.models import (
     Activity,
-    ApiKey,
     ApprovalRequest,
     ApprovalStatus,
     CalendarFeed,
@@ -58,8 +61,8 @@ from app.models import (
     User,
     Workspace,
 )
+from app.oauth_grants import bearer_key, oauth_metadata
 from app.scopes import has_scope, missing_scopes, normalize_scopes
-from app.security import hash_api_key
 from app.services.entity_patch import (
     apply_deal_patch,
     apply_lead_patch,
@@ -78,7 +81,7 @@ log = logging.getLogger("nakatomi.mcp")
 
 def _public_base_url() -> str:
     """Issuer / resource base for MCP OAuth discovery (set PUBLIC_BASE_URL in prod)."""
-    base = (settings.PUBLIC_BASE_URL or "").strip().rstrip("/")
+    base = settings.public_origin
     return base or "http://localhost:8000"
 
 
@@ -96,16 +99,11 @@ class NakatomiTokenVerifier:
             return None
         db = SessionLocal()
         try:
-            key = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(token)))
-            if not key or key.revoked_at is not None:
+            resolved = bearer_key(db, token, resource=_mcp_resource.get())
+            if not resolved:
                 return None
-            if key.expires_at is not None:
-                exp = key.expires_at
-                if exp.tzinfo is None:
-                    exp = exp.replace(tzinfo=UTC)
-                if exp < datetime.now(UTC):
-                    return None
-            scopes = list(normalize_scopes(key.scopes))
+            key, _, granted_scopes = resolved
+            scopes = normalize_scopes(granted_scopes)
             # Advertise mcp scope for clients that request it; * already full access.
             if "mcp" not in scopes:
                 scopes.append("mcp")
@@ -115,11 +113,15 @@ class NakatomiTokenVerifier:
                 if exp.tzinfo is None:
                     exp = exp.replace(tzinfo=UTC)
                 expires_at = int(exp.timestamp())
+            grant = oauth_metadata(key)
             return AccessToken(
                 token=token,
-                client_id=key.prefix or key.id,
+                client_id=grant.get("client_id") or key.id,
+                subject=grant.get("grant_id") or key.id,
+                claims={"iss": _base},
                 scopes=scopes,
                 expires_at=expires_at,
+                resource=f"{_base}/mcp",
             )
         finally:
             db.close()
@@ -137,12 +139,14 @@ class NakatomiTokenVerifier:
 #  - auth + token_verifier: HTTP 401 until a valid Bearer nk_… is presented
 #    (OAuth 2.1 discovery still via app/.well-known routes).
 _base = _public_base_url()
+_mcp_resource: ContextVar[str | None] = ContextVar("mcp_resource", default=None)
 mcp: MCPServer[None] = MCPServer(
     "Nakatomi CRM",
     token_verifier=NakatomiTokenVerifier(),
     auth=AuthSettings(
         issuer_url=AnyHttpUrl(_base),
-        resource_server_url=AnyHttpUrl(_base),
+        resource_server_url=AnyHttpUrl(f"{_base}/mcp"),
+        validate_token_resource=True,
         # Empty: any valid nk_ key is enough; tool scopes still enforced in-handler.
         required_scopes=[],
         service_documentation_url=AnyHttpUrl(
@@ -172,14 +176,15 @@ def _principal_from_ctx(ctx: Context) -> tuple[Principal, Any]:
             "missing nakatomi api key; set Authorization: Bearer nk_... in your MCP client config"
         )
     db = SessionLocal()
-    key = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(token)))
-    if not key or key.revoked_at is not None:
+    resolved = bearer_key(db, token, resource=_mcp_resource.get())
+    if not resolved:
         db.close()
-        raise RuntimeError("invalid or revoked api key")
+        raise RuntimeError("invalid, expired, or revoked access token")
+    key, role, scopes = resolved
+    _enforce_rate_limit(db, key)
     ws = db.get(Workspace, key.workspace_id)
     user = db.get(User, key.user_id) if key.user_id else None
-    scopes = normalize_scopes(key.scopes)
-    return Principal(user=user, api_key=key, workspace=ws, role=key.role, scopes=scopes), db
+    return Principal(user=user, api_key=key, workspace=ws, role=role, scopes=normalize_scopes(scopes)), db
 
 
 def _require_scopes(principal: Principal, *needed: str) -> None:
@@ -3619,7 +3624,33 @@ def _serialize(obj: Any) -> dict:
 
 def build_asgi_app():
     """Return the MCP streamable-HTTP ASGI app for mounting under FastAPI."""
-    return mcp.streamable_http_app(
+    http_app = mcp.streamable_http_app(
         streamable_http_path="/",
+        stateless_http=settings.MCP_STATELESS_HTTP,
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
+
+    async def with_resource(scope, receive, send):
+        if scope["type"] != "http":
+            await http_app(scope, receive, send)
+            return
+        origin = public_origin(Request(scope))
+        resource = _mcp_resource.set(f"{origin}/mcp")
+
+        async def send_with_discovery(message):
+            if message["type"] == "http.response.start" and message["status"] == 401:
+                headers = MutableHeaders(scope=message)
+                challenge = headers.get("www-authenticate")
+                if challenge:
+                    headers["www-authenticate"] = challenge.replace(
+                        f"{_base}/.well-known/oauth-protected-resource/mcp",
+                        f"{origin}/.well-known/oauth-protected-resource/mcp",
+                    )
+            await send(message)
+
+        try:
+            await http_app(scope, receive, send_with_discovery)
+        finally:
+            _mcp_resource.reset(resource)
+
+    return with_resource

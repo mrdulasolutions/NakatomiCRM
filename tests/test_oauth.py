@@ -6,25 +6,39 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
-from urllib.parse import parse_qs, unquote, urlparse
+from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import ApiKey, OAuthCode
+from app.models import ApiKey, OAuthCode, User
+from app.security import hash_api_key
 
 
 def _code_from_authorize_redirect(location: str) -> tuple[str, str | None]:
-    """OAuth POST /authorize redirects via /oauth/complete?to=… with code on target URI."""
-    parsed = urlparse(location)
-    if parsed.path == "/oauth/complete":
-        qs = parse_qs(parsed.query)
-        target = unquote(qs["to"][0])
-        tp = urlparse(target)
-        tqs = parse_qs(tp.query)
-        return tqs["code"][0], (tqs.get("state") or [None])[0]
-    qs = parse_qs(parsed.query)
+    qs = parse_qs(urlparse(location).query)
     return qs["code"][0], (qs.get("state") or [None])[0]
+
+
+def _initialize_mcp(client, token):
+    return client.post(
+        "/mcp",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json, text/event-stream",
+        },
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "oauth-test", "version": "1"},
+            },
+        },
+    )
 
 
 def _pkce() -> tuple[str, str]:
@@ -68,7 +82,7 @@ def test_dynamic_client_registration(client):
     assert body["token_endpoint_auth_method"] == "none"
 
 
-def test_full_authorization_code_flow(client, workspace):
+def test_full_authorization_code_flow(client, workspace, mcp_client):
     """Walk the whole flow: register → authorize → token exchange → use the
     access token against a protected endpoint."""
     verifier, challenge = _pkce()
@@ -82,7 +96,7 @@ def test_full_authorization_code_flow(client, workspace):
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "state": "abc123",
+            "state": "abc123&label=+ /",
             "scope": "mcp",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
@@ -109,7 +123,7 @@ def test_full_authorization_code_flow(client, workspace):
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "state": "abc123",
+            "state": "abc123&label=+ /",
             "scope": "mcp",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
@@ -121,7 +135,7 @@ def test_full_authorization_code_flow(client, workspace):
     assert r.status_code == 302, r.text
     loc = r.headers["location"]
     code, got_state = _code_from_authorize_redirect(loc)
-    assert got_state == "abc123"
+    assert got_state == "abc123&label=+ /"
 
     # 3. Exchange the code for tokens with the PKCE verifier.
     r = client.post(
@@ -142,12 +156,18 @@ def test_full_authorization_code_flow(client, workspace):
     assert tokens["expires_in"] == 3600
     assert tokens["scope"] == "mcp"
 
-    # 4. Access token works against a protected endpoint.
+    # 4. Delegated access is MCP-only and renewal credentials are never bearer tokens.
     r = client.get(
         "/contacts",
         headers={"Authorization": f"Bearer {tokens['access_token']}"},
     )
-    assert r.status_code == 200
+    assert r.status_code == 401
+    assert _initialize_mcp(mcp_client, tokens["access_token"]).status_code == 200
+    assert _initialize_mcp(mcp_client, tokens["refresh_token"]).status_code == 401
+    assert (
+        client.get("/contacts", headers={"Authorization": f"Bearer {tokens['refresh_token']}"}).status_code
+        == 401
+    )
 
     # 5. Code cannot be reused.
     r = client.post(
@@ -250,10 +270,16 @@ def test_refresh_token_rotation(client, workspace):
     first_access = tokens["access_token"]
     first_refresh = tokens["refresh_token"]
 
+    bad_client = client.post(
+        "/oauth/token",
+        data={"grant_type": "refresh_token", "refresh_token": first_refresh, "client_id": _register(client)},
+    )
+    assert bad_client.status_code == 400
+
     # Use refresh_token to get a new access_token.
     r = client.post(
         "/oauth/token",
-        data={"grant_type": "refresh_token", "refresh_token": first_refresh},
+        data={"grant_type": "refresh_token", "refresh_token": first_refresh, "client_id": client_id},
     )
     assert r.status_code == 200
     rotated = r.json()
@@ -263,12 +289,40 @@ def test_refresh_token_rotation(client, workspace):
     # Original refresh token is now revoked (rotation).
     r = client.post(
         "/oauth/token",
-        data={"grant_type": "refresh_token", "refresh_token": first_refresh},
+        data={"grant_type": "refresh_token", "refresh_token": first_refresh, "client_id": client_id},
     )
     assert r.status_code == 400
 
+    with SessionLocal() as db:
+        row = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(rotated["refresh_token"])))
+        assert row is not None
+        row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
+        expired = client.post(
+            "/oauth/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": rotated["refresh_token"],
+                "client_id": client_id,
+            },
+        )
+        assert expired.status_code == 400
+        row.expires_at = datetime.now(UTC) + timedelta(days=1)
+        user = db.get(User, row.user_id)
+        user.is_active = False
+        db.commit()
+    inactive = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": rotated["refresh_token"],
+            "client_id": client_id,
+        },
+    )
+    assert inactive.status_code == 400
 
-def test_revoke_endpoint(client, workspace):
+
+def test_revoke_endpoint(client, workspace, mcp_client):
     verifier, challenge = _pkce()
     redirect_uri = "http://localhost:44444/cb"
     client_id = _register(client, redirect_uri)
@@ -297,7 +351,7 @@ def test_revoke_endpoint(client, workspace):
         follow_redirects=False,
     )
     code = _code_from_authorize_redirect(r.headers["location"])[0]
-    access = client.post(
+    tokens = client.post(
         "/oauth/token",
         data={
             "grant_type": "authorization_code",
@@ -306,18 +360,28 @@ def test_revoke_endpoint(client, workspace):
             "client_id": client_id,
             "code_verifier": verifier,
         },
-    ).json()["access_token"]
+    ).json()
+    access = tokens["access_token"]
 
     # Token works.
-    assert client.get("/contacts", headers={"Authorization": f"Bearer {access}"}).status_code == 200
+    assert _initialize_mcp(mcp_client, access).status_code == 200
 
     # Revoke it.
-    r = client.post("/oauth/revoke", data={"token": access})
+    r = client.post("/oauth/revoke", data={"token": access, "client_id": client_id})
     assert r.status_code == 200
     assert r.json()["revoked"] is True
 
     # Now it's rejected.
-    assert client.get("/contacts", headers={"Authorization": f"Bearer {access}"}).status_code == 401
+    assert _initialize_mcp(mcp_client, access).status_code == 401
+    response = client.post(
+        "/oauth/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": tokens["refresh_token"],
+            "client_id": client_id,
+        },
+    )
+    assert response.status_code == 400
 
 
 def test_invalid_client_id_rejected(client):
