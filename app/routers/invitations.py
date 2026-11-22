@@ -13,7 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.brand_pages import account_page, esc
+from app.brand_pages import account_page, dashboard_stylesheet, esc
 from app.browser_sessions import browser_principal, require_same_origin, set_session
 from app.config import settings
 from app.db import get_db
@@ -30,6 +30,29 @@ MEMBERS_URL = "/dashboard/members"
 INVITES_URL = f"{MEMBERS_URL}/invitations"
 ACCEPT_URL = "/auth/accept-invitation"
 INVITATION_TTL = timedelta(days=2)
+
+
+def _members_page(title: str, workspace: str, body: str, *, status_code: int = 200) -> HTMLResponse:
+    return HTMLResponse(
+        f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{esc(title)} · Nakatomi</title><style>{dashboard_stylesheet()}</style></head>
+<body class="dash-app"><div class="dash-shell">
+<header class="dash-header">
+  <div class="dash-brand"><p class="mark">Nakatomi CRM</p><h1 class="dash-title">{esc(title)}</h1></div>
+  <span class="dash-meta">{esc(workspace)}</span>
+  <nav class="dash-nav" aria-label="Dashboard"><a href="/dashboard">Dashboard</a>
+  <a href="{MEMBERS_URL}" aria-current="page">Members</a></nav>
+</header>
+<main class="dash-main dash-members">{body}</main></div></body></html>""",
+        status_code=status_code,
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+        },
+    )
 
 
 def _manageable_roles(role: MemberRole) -> tuple[MemberRole, ...]:
@@ -54,12 +77,14 @@ def members(db: Session = Depends(get_db), p: Principal = Depends(dashboard_admi
                 f'<option value="{option.value}"{" selected" if option == role else ""}>{option.value}</option>'
                 for option in manageable_roles
             )
-            actions = f"""<form method="post" action="{MEMBERS_URL}/{esc(user_id)}">
-              <select name="role" aria-label="Role for {esc(email)}">{options}</select>
-              <button name="action" value="change">Save role</button>
-              <button name="action" value="remove">Remove member</button>
+            actions = f"""<form class="dash-member-actions" method="post" action="{MEMBERS_URL}/{esc(user_id)}">
+              <select class="dash-select" name="role" aria-label="Role for {esc(email)}">{options}</select>
+              <button class="dash-btn-ghost" name="action" value="change">Save role</button>
+              <button class="dash-btn-ghost" name="action" value="remove">Remove member</button>
             </form>"""
-        roster_items.append(f"<li>{esc(email)} ({esc(role.value)}){actions}</li>")
+        roster_items.append(
+            f'<li class="dash-row dash-member-row"><span>{esc(email)} ({esc(role.value)})</span>{actions}</li>'
+        )
     roster = "".join(roster_items)
     pending = db.scalars(
         select(WorkspaceInvitation)
@@ -75,28 +100,33 @@ def members(db: Session = Depends(get_db), p: Principal = Depends(dashboard_admi
         if invite.role != MemberRole.admin.value or p.role == MemberRole.owner:
             revoke = f"""<form method="post" action="{INVITES_URL}/revoke">
               <input type="hidden" name="email" value="{esc(invite.email)}">
-              <button>Revoke invitation</button>
+              <button class="dash-btn-ghost">Revoke invitation</button>
             </form>"""
-        invitations.append(f"<li>{esc(invite.email)} ({esc(invite.role)}){revoke}</li>")
+        invitations.append(
+            f'<li class="dash-row dash-member-row"><span>{esc(invite.email)} ({esc(invite.role)})</span>{revoke}</li>'
+        )
     invites = "".join(invitations)
     admin_option = '<option value="admin">Admin</option>' if p.role == MemberRole.owner else ""
-    return account_page(
-        f"Members · {p.workspace.name}",
-        f"""<p><a href="/dashboard">Back to dashboard</a></p>
-        <ul>{roster}</ul>
-        <h2>Invite a teammate</h2>
-        <form method="post" action="{INVITES_URL}">
+    return _members_page(
+        "Members",
+        p.workspace.name,
+        f"""<section class="dash-section"><h2>Workspace members</h2>
+        <div class="body"><ul>{roster}</ul></div></section>
+        <section class="dash-section"><h2>Invite a teammate</h2><div class="body">
+        <form class="dash-member-invite" method="post" action="{INVITES_URL}">
           <label for="email">Email</label>
           <input id="email" type="email" name="email" required maxlength="320">
           <label for="role">Role</label>
-          <select id="role" name="role">
+          <select class="dash-select" id="role" name="role">
             <option value="member">Member</option>
             <option value="readonly">Read-only</option>{admin_option}
           </select>
-          <button>Create invitation</button>
+          <button class="dash-btn-ghost">Create invitation</button>
         </form>
         <p>Creating another invitation for the same email replaces its previous link.</p>
-        <h2>Pending invitations</h2><ul>{invites}</ul>""",
+        </div></section>
+        <section class="dash-section"><h2>Pending invitations</h2>
+        <div class="body">{f"<ul>{invites}</ul>" if invites else "<p>No pending invitations.</p>"}</div></section>""",
     )
 
 
@@ -156,8 +186,9 @@ def create_invitation(
         raise HTTPException(403, "You cannot invite someone with that role")
     origin = canonical_origin()
     if not origin:
-        return account_page(
+        return _members_page(
             "Invitation unavailable",
+            p.workspace.name,
             '<p>Set the application’s public URL before inviting teammates.</p><p><a href="/dashboard/members">Back to members</a></p>',
             status_code=503,
         )
@@ -168,8 +199,11 @@ def create_invitation(
         select(Membership.id).join(User).where(Membership.workspace_id == workspace_id, User.email == address)
     )
     if existing:
-        return account_page(
-            "Already a member", '<p><a href="/dashboard/members">Back to members</a></p>', status_code=409
+        return _members_page(
+            "Already a member",
+            p.workspace.name,
+            '<p><a href="/dashboard/members">Back to members</a></p>',
+            status_code=409,
         )
     token = secrets.token_urlsafe(32)
     invite = db.get(WorkspaceInvitation, (workspace_id, address), with_for_update=True)
@@ -196,12 +230,13 @@ def create_invitation(
         except Exception as exc:
             log.warning("Workspace invitation email delivery failed (%s)", type(exc).__name__)
             status = "Email delivery failed. Share this link privately with your teammate."
-    return account_page(
+    return _members_page(
         "Invitation created",
-        f"""<p>{esc(status)}</p>
+        p.workspace.name,
+        f"""<section class="dash-section"><h2>Invitation link</h2><div class="body"><p>{esc(status)}</p>
         <label for="link">Invitation link</label>
         <input id="link" value="{esc(link)}" readonly size="65">
-        <p><a href="{MEMBERS_URL}">Back to members</a></p>""",
+        <p><a href="{MEMBERS_URL}">Back to members</a></p></div></section>""",
         status_code=201,
     )
 
