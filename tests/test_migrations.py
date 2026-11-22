@@ -9,10 +9,10 @@ from __future__ import annotations
 import os
 
 import pytest
+from alembic.config import Config
 from sqlalchemy import create_engine, text
 
 from alembic import command
-from alembic.config import Config
 
 
 @pytest.mark.postgres
@@ -68,7 +68,7 @@ def test_alembic_upgrade_head():
         cols = {
             r[0]
             for r in conn.execute(
-                text("SELECT column_name FROM information_schema.columns " "WHERE table_name = 'api_keys'")
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = 'api_keys'")
             )
         }
     assert "scopes" in cols
