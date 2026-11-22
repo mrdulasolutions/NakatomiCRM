@@ -48,7 +48,7 @@ def _members_page(title: str, workspace: str, body: str, *, status_code: int = 2
         status_code=status_code,
         headers={
             "Cache-Control": "no-store",
-            "Referrer-Policy": "no-referrer",
+            "Referrer-Policy": "same-origin",
             "X-Frame-Options": "DENY",
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         },
@@ -282,6 +282,7 @@ def _accept_page(message: str = "", token: str = "", *, status_code: int = 200):
           else document.getElementById("message").textContent = "Open your invitation link to join.";
         </script>""",
         status_code=status_code,
+        referrer_policy="same-origin",
     )
 
 

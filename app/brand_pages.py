@@ -211,7 +211,9 @@ def esc(s: str) -> str:
     return escape(s, quote=True)
 
 
-def account_page(title: str, body: str, *, status_code: int = 200) -> HTMLResponse:
+def account_page(
+    title: str, body: str, *, status_code: int = 200, referrer_policy: str = "no-referrer"
+) -> HTMLResponse:
     return HTMLResponse(
         f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -219,7 +221,7 @@ def account_page(title: str, body: str, *, status_code: int = 200) -> HTMLRespon
         status_code=status_code,
         headers={
             "Cache-Control": "no-store",
-            "Referrer-Policy": "no-referrer",
+            "Referrer-Policy": referrer_policy,
             "X-Frame-Options": "DENY",
             "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         },

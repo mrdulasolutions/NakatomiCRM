@@ -110,6 +110,15 @@ def test_existing_user_requires_authentication_and_reissue_invalidates_old_link(
     client, workspace, monkeypatch
 ):
     _sign_in_owner(client, workspace, monkeypatch)
+    # Native form POSTs need a policy that preserves the same-origin Origin header.
+    assert client.get(f"{ORIGIN}/dashboard/members").headers["Referrer-Policy"] == "same-origin"
+    assert client.get(f"{ORIGIN}{ACCEPT}").headers["Referrer-Policy"] == "same-origin"
+    rejected = client.post(
+        f"{ORIGIN}{INVITATIONS}",
+        data={"email": "existing-user@example.com", "role": "member"},
+        headers={"Origin": "null"},
+    )
+    assert rejected.status_code == 403
     email = "existing-user@example.com"
     password = "old-password-for-user"
     assert (
