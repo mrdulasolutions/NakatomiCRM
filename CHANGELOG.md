@@ -1,9 +1,25 @@
 # Changelog
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Versioning: [SemVer](https://semver.org/).
+Historical tags follow [SemVer](https://semver.org/). The `0.0.0.1` release deliberately uses a four-part version reset.
 
 ## [Unreleased]
+
+## [0.0.0.1]
+
+### Added
+
+- Account-based dashboard sign-in, workspace selection, and scoped agent credentials.
+- Agent-generated workspace ZIP downloads for Railway, VPS, and local migrations.
+- Workspace-approved memory delivery queue with retry status.
+
+### Security and compatibility
+
+- Hardened dashboard output, storage boundaries, outbound integrations, and scoped agent authorization.
+- OAuth migration 0017 retires legacy bearer access tokens. Verify renewal or reconnect clients.
+- Migration 0018 adds memory delivery status. Workspace opt-in is required for mirroring.
+- Attachment restore uses destination-owned storage keys. Keep a PostgreSQL backup and test restore before upgrading.
+- Older idempotency keys are outside the new principal-bound replay namespace. Confirm the outcome of in-flight writes before retrying after upgrade.
 
 ### Added
 

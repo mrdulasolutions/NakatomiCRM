@@ -953,6 +953,22 @@ class IngestRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
 
+class MemoryDelivery(Base, TimestampMixin):
+    __tablename__ = "memory_deliveries"
+    __table_args__ = (Index("ix_memory_deliveries_due", "status", "next_attempt_at"),)
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    connector: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_type: Mapped[EntityType] = mapped_column(Enum(EntityType), nullable=False)
+    entity_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    error: Mapped[str | None] = mapped_column(String(128))
+
+
 class OAuthClient(Base, TimestampMixin):
     """An MCP client that registered itself via /oauth/register (RFC 7591).
 

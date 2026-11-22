@@ -3,18 +3,14 @@ mirrors to any enabled memory connectors."""
 
 from __future__ import annotations
 
-import logging
-
 from fastapi import BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.deps import Principal
-from app.models import AuditLog, EntityType, MemoryLink, TimelineEvent, Webhook
-from app.services.memory import enabled_connectors
+from app.models import AuditLog, EntityType, TimelineEvent, Webhook
+from app.services.memory.delivery import enqueue as enqueue_memory
 from app.services.webhook_delivery import enqueue as enqueue_webhook
-
-log = logging.getLogger("nakatomi.events")
 
 
 def emit(
@@ -53,21 +49,10 @@ def emit(
         )
     )
 
+    enqueue_memory(db, principal.workspace, event_type, et_enum, entity_id)
+
     if background is None:
         return
-
-    # Fan out to enabled memory connectors (best-effort, runs in background).
-    for name in enabled_connectors():
-        background.add_task(
-            _mirror_to_memory,
-            connector_name=name,
-            workspace_id=principal.workspace.id,
-            event_type=event_type,
-            crm_entity_type=et_enum.value,
-            crm_entity_id=entity_id,
-            text=_summarize(event_type, payload),
-            metadata={"payload": payload},
-        )
 
     # Durable webhook delivery — enqueue a pending row per subscriber; the
     # background worker picks them up. Failures are persisted, not lost.
@@ -92,53 +77,4 @@ def emit(
                 "entity_id": entity_id,
                 "data": payload,
             },
-        )
-
-
-def _summarize(event_type: str, payload: dict) -> str:
-    """Cheap summary string sent to memory connectors. Agents handle semantics."""
-    return f"{event_type}: {payload}"
-
-
-def _mirror_to_memory(
-    *,
-    connector_name: str,
-    workspace_id: str,
-    event_type: str,
-    crm_entity_type: str,
-    crm_entity_id: str,
-    text: str,
-    metadata: dict,
-) -> None:
-    from app.db import db_session
-    from app.services.memory import get_connector
-
-    connector = get_connector(connector_name)
-    if not connector:
-        return
-    try:
-        result = connector.store_event(
-            workspace_id=workspace_id,
-            event_type=event_type,
-            crm_entity_type=crm_entity_type,
-            crm_entity_id=crm_entity_id,
-            text=text,
-            metadata=metadata,
-        )
-    except Exception as e:  # noqa: BLE001
-        log.warning("memory connector '%s' raised during store: %s", connector_name, e)
-        return
-    if not result or not result.external_id:
-        return
-    with db_session() as db:
-        db.add(
-            MemoryLink(
-                workspace_id=workspace_id,
-                connector=connector_name,
-                external_id=result.external_id,
-                crm_entity_type=EntityType(crm_entity_type),
-                crm_entity_id=crm_entity_id,
-                note=f"auto-link via {event_type}",
-                data={"event_type": event_type},
-            )
         )

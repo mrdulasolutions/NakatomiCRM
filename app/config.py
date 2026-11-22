@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     BOOTSTRAP_TOKEN: str = ""
 
     CORS_ORIGINS: str = "*"
+    INTEGRATION_PRIVATE_HOSTS: str = ""
 
     # Memory connectors — comma-separated list; each adapter reads its own env vars
     MEMORY_CONNECTORS: str = ""

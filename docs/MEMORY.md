@@ -6,8 +6,12 @@ and an external record ID. Link, list, and trace operations work with no
 provider credentials configured.
 
 Enabled connectors can receive event summaries from supported CRM write
-paths and answer recall requests. Mirroring is best effort. An empty recall
-result can also mean a connector failed or was unavailable.
+paths and answer recall requests. Set `workspace.data.memory_mirroring=true`
+as an owner or admin to opt into outbound delivery. The queue stores event
+identifiers and status and does not send entire CRM payloads. With the
+background worker running, delivery is retried and REST operators can inspect
+`GET /memory/deliveries`. Provider delivery can repeat if a worker restarts
+before recording a successful response.
 
 Keep external connectors disabled on shared installations until you have
 verified workspace isolation. Use dedicated provider credentials for each
@@ -40,7 +44,7 @@ Leave `MEMORY_CONNECTORS` empty to disable provider recall and mirroring. Existi
 
 ### `POST /memory/recall`
 
-Query the selected enabled connectors and return merged results. The REST endpoint currently requires `memory:write`. The MCP `memory_recall` tool requires `memory:read`.
+Query the selected enabled connectors and return merged results. REST and MCP both require `memory:read`. REST includes a `failed_connectors` list when a provider is unavailable.
 
 ```json
 POST /memory/recall

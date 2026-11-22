@@ -209,6 +209,8 @@ class GBrainConnector(MemoryConnector):
     ) -> MemoryWriteResult | None:
         ts = datetime.now(UTC)
         slug = _build_slug(workspace_id, crm_entity_type, crm_entity_id, ts)
+        if delivery_id := metadata.get("delivery_id"):
+            slug = f"{slug.rsplit('/', 1)[0]}/{_slug_component(delivery_id)}"
 
         if event_type.endswith(".deleted"):
             # Mirror deletes by removing the stored page lineage for this entity.
@@ -246,16 +248,10 @@ class GBrainConnector(MemoryConnector):
 
         try:
             result = self._call_tool("put_page", {"slug": slug, "content": content})
-        except httpx.HTTPError as e:
-            log.warning("gbrain put_page failed: %s", e)
-            return None
-
-        if not isinstance(result, dict):
-            # put_page returns {status, slug, chunks, ...} on success; anything else is noise
-            return None
-        if result.get("status") == "error":
-            log.warning("gbrain put_page status=error: %s", result.get("message") or result)
-            return None
+        except httpx.HTTPError as exc:
+            raise RuntimeError("Memory write failed") from exc
+        if not isinstance(result, dict) or result.get("status") == "error":
+            raise RuntimeError("Invalid memory write response")
 
         return MemoryWriteResult(
             connector=self.name,
@@ -282,16 +278,15 @@ class GBrainConnector(MemoryConnector):
                 {"query": query, "limit": oversample, "expand": True},
             )
         except httpx.HTTPError as e:
-            log.warning("gbrain query failed: %s", e)
-            return []
+            raise RuntimeError("Memory recall failed") from e
 
         rows = result if isinstance(result, list) else (result or {}).get("results") or []
         if not isinstance(rows, list):
             return []
 
-        prefix = None
+        prefix = f"nakatomi/{_slug_component(workspace_id)}/"
         if crm_entity_type and crm_entity_id:
-            prefix = f"nakatomi/{_slug_component(workspace_id)}/{_slug_component(crm_entity_type)}/{_slug_component(crm_entity_id)}/"
+            prefix += f"{_slug_component(crm_entity_type)}/{_slug_component(crm_entity_id)}/"
 
         out: list[MemoryItem] = []
         for it in rows:

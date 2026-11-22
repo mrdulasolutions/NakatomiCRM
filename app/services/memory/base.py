@@ -55,8 +55,8 @@ class MemoryConnector(ABC):
         """Return the top-N memories relevant to the query (+ optional CRM anchor)."""
 
     def verify_webhook(self, headers: dict, body: bytes) -> bool:
-        """Default: accept. Override with HMAC/signature verification per provider."""
-        return True
+        """Reject inbound events until the adapter implements verified delivery."""
+        return False
 
     def parse_webhook(self, headers: dict, body: dict) -> list[dict]:
         """Return a list of ``{external_id, text, metadata, crm_refs: [{type, id}]}``

@@ -7,8 +7,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import Pagination, Principal, enforce_resource_scope, get_pagination, get_principal
-from app.models import EntityType, MemoryLink
+from app.deps import (
+    Pagination,
+    Principal,
+    enforce_resource_scope,
+    get_pagination,
+    get_principal,
+    require_scopes,
+)
+from app.models import EntityType, MemoryDelivery, MemoryLink
 from app.schemas import (
     MemoryLinkIn,
     MemoryLinkOut,
@@ -20,22 +27,25 @@ from app.schemas import (
 )
 from app.services.events import emit
 from app.services.memory import enabled_connectors, get_connector
+from app.services.memory.access import owns_entity
+from app.services.memory.recall import recall_workspace
 from app.services.pagination import apply_cursor, encode_cursor
 
 router = APIRouter(
     prefix="/memory",
     tags=["memory"],
-    dependencies=[Depends(enforce_resource_scope("memory"))],
 )
 log = logging.getLogger("nakatomi.memory")
 
 
-@router.get("/connectors", response_model=list[str])
+@router.get("/connectors", response_model=list[str], dependencies=[Depends(require_scopes("memory:read"))])
 def list_connectors(_: Principal = Depends(get_principal)) -> list[str]:
     return list(enabled_connectors().keys())
 
 
-@router.get("/links", response_model=Page[MemoryLinkOut])
+@router.get(
+    "/links", response_model=Page[MemoryLinkOut], dependencies=[Depends(require_scopes("memory:read"))]
+)
 def list_links(
     connector: str | None = Query(None, description="filter by connector name"),
     entity_type: EntityType | None = None,
@@ -75,61 +85,63 @@ def list_links(
     )
 
 
-@router.post("/recall", response_model=MemoryRecallOut)
+@router.get("/deliveries", dependencies=[Depends(require_scopes("memory:read"))])
+def list_deliveries(
+    db: Session = Depends(get_db),
+    p: Principal = Depends(get_principal),
+    limit: int = Query(50, ge=1, le=100),
+) -> list[dict]:
+    rows = db.scalars(
+        select(MemoryDelivery)
+        .where(MemoryDelivery.workspace_id == p.workspace.id)
+        .order_by(MemoryDelivery.created_at.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "id": row.id,
+            "connector": row.connector,
+            "event_type": row.event_type,
+            "status": row.status,
+            "attempts": row.attempts,
+            "error": row.error,
+        }
+        for row in rows
+    ]
+
+
+@router.post("/recall", response_model=MemoryRecallOut, dependencies=[Depends(require_scopes("memory:read"))])
 def recall(
     req: MemoryRecallIn,
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
 ) -> MemoryRecallOut:
-    targets = req.connectors or list(enabled_connectors().keys())
-    items: list[MemoryRecallItem] = []
-    for name in targets:
-        connector = get_connector(name)
-        if not connector:
-            continue
-        try:
-            got = connector.recall(
-                workspace_id=p.workspace.id,
-                query=req.query,
-                crm_entity_type=req.entity_type.value if req.entity_type else None,
-                crm_entity_id=req.entity_id,
-                limit=req.limit,
-            )
-        except Exception as e:  # noqa: BLE001
-            log.warning("recall on '%s' failed: %s", name, e)
-            continue
-        for m in got:
-            links = db.scalars(
-                select(MemoryLink).where(
-                    MemoryLink.workspace_id == p.workspace.id,
-                    MemoryLink.connector == name,
-                    MemoryLink.external_id == m.external_id,
-                )
-            ).all()
-            items.append(
-                MemoryRecallItem(
-                    connector=m.connector,
-                    external_id=m.external_id,
-                    text=m.text,
-                    score=m.score,
-                    metadata=m.metadata,
-                    crm_links=[
-                        f"{link.crm_entity_type.value if hasattr(link.crm_entity_type, 'value') else link.crm_entity_type}:{link.crm_entity_id}"
-                        for link in links
-                    ],
-                )
-            )
-    items.sort(key=lambda x: x.score, reverse=True)
-    return MemoryRecallOut(items=items[: req.limit])
+    items, failed = recall_workspace(
+        db,
+        workspace_id=p.workspace.id,
+        query=req.query,
+        entity_type=req.entity_type.value if req.entity_type else None,
+        entity_id=req.entity_id,
+        limit=req.limit,
+        connectors=req.connectors,
+    )
+    return MemoryRecallOut(items=[MemoryRecallItem(**item) for item in items], failed_connectors=failed)
 
 
-@router.post("/link", response_model=MemoryLinkOut, status_code=201)
+@router.post(
+    "/link",
+    response_model=MemoryLinkOut,
+    status_code=201,
+    dependencies=[Depends(require_scopes("memory:write"))],
+)
 def create_link(
     req: MemoryLinkIn,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
     p: Principal = Depends(get_principal),
 ) -> MemoryLinkOut:
+    if not owns_entity(db, p.workspace.id, req.crm_entity_type, req.crm_entity_id):
+        raise HTTPException(404, "CRM entity not found")
     link = MemoryLink(
         workspace_id=p.workspace.id,
         connector=req.connector,
@@ -162,7 +174,9 @@ def create_link(
     return MemoryLinkOut.model_validate(link)
 
 
-@router.delete("/link/{link_id}", response_model=OkResponse)
+@router.delete(
+    "/link/{link_id}", response_model=OkResponse, dependencies=[Depends(enforce_resource_scope("memory"))]
+)
 def delete_link(
     link_id: str,
     background: BackgroundTasks,
@@ -187,7 +201,11 @@ def delete_link(
     return OkResponse(message="unlinked")
 
 
-@router.get("/trace/{entity_type}/{entity_id}", response_model=list[MemoryLinkOut])
+@router.get(
+    "/trace/{entity_type}/{entity_id}",
+    response_model=list[MemoryLinkOut],
+    dependencies=[Depends(require_scopes("memory:read"))],
+)
 def trace(
     entity_type: EntityType,
     entity_id: str,
@@ -204,7 +222,9 @@ def trace(
     return [MemoryLinkOut.model_validate(r) for r in rows]
 
 
-@router.post("/webhook/{connector}", response_model=OkResponse)
+@router.post(
+    "/webhook/{connector}", response_model=OkResponse, dependencies=[Depends(require_scopes("memory:write"))]
+)
 async def inbound_webhook(
     connector: str,
     request: Request,
@@ -229,11 +249,13 @@ async def inbound_webhook(
         for ref in item.get("crm_refs") or []:
             et = ref.get("type")
             eid = ref.get("id")
-            if not (et and eid):
+            if not (et and eid and ext_id):
                 continue
             try:
                 link_et = EntityType(et)
             except ValueError:
+                continue
+            if not owns_entity(db, p.workspace.id, link_et, eid):
                 continue
             exists = db.scalar(
                 select(MemoryLink).where(

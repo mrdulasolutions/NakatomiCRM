@@ -16,15 +16,14 @@ import json
 import logging
 from collections.abc import Callable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.db import SessionLocal
-from app.deps import check_idempotency, save_idempotency
-from app.models import ApiKey
-from app.security import hash_api_key
+from app.deps import check_idempotency, principal_idempotency_key, save_idempotency
+from app.oauth_grants import bearer_key
 
 log = logging.getLogger("nakatomi.idempotency")
 
@@ -44,6 +43,10 @@ _SKIP_PREFIXES = (
     "/llms.txt",
     "/nakatomi.txt",
     "/.well-known",
+    "/workspace/api-keys",
+    "/webhooks",
+    "/export/archive",
+    "/files",
 )
 
 
@@ -65,7 +68,8 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         auth = request.headers.get("authorization") or request.headers.get("Authorization") or ""
         if not auth.lower().startswith("bearer "):
             return await call_next(request)
-        token = auth.split(None, 1)[1].strip()
+        _, _, token = auth.partition(" ")
+        token = token.strip()
         if not token.startswith("nk_"):
             return await call_next(request)
 
@@ -73,9 +77,17 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
 
         db = SessionLocal()
         try:
-            key_row = db.scalar(select(ApiKey).where(ApiKey.key_hash == hash_api_key(token)))
-            if not key_row or key_row.revoked_at is not None:
+            resolved = bearer_key(db, token)
+            if not resolved:
                 return await call_next(request)
+            key_row, role, scopes = resolved
+            idem_key = principal_idempotency_key(key_row.id, role, scopes, idem_key)
+            lock = db.scalar(select(func.pg_try_advisory_xact_lock(func.hashtextextended(idem_key, 0))))
+            if not lock:
+                return JSONResponse(
+                    status_code=409, content={"detail": "Request with this key is in progress"}
+                )
+            path = str(request.url.path) + (f"?{request.url.query}" if request.url.query else "")
 
             try:
                 existing = check_idempotency(
@@ -83,7 +95,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     key_row.workspace_id,
                     idem_key,
                     request.method,
-                    request.url.path,
+                    path,
                     body,
                 )
             except Exception as exc:  # noqa: BLE001 — HTTPException or dict detail
@@ -127,7 +139,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                             key_row.workspace_id,
                             idem_key,
                             request.method,
-                            request.url.path,
+                            path,
                             body,
                             response.status_code,
                             parsed,

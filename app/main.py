@@ -67,7 +67,9 @@ log = logging.getLogger("nakatomi")
 
 def _assert_production_secrets() -> None:
     """Refuse to boot production with a known-insecure SECRET_KEY."""
-    if settings.ENVIRONMENT.lower() not in {"production", "prod"}:
+    if settings.ENVIRONMENT.lower() not in {"production", "prod"} and not settings.public_origin.startswith(
+        "https://"
+    ):
         return
     bad = {
         "",
@@ -77,7 +79,7 @@ def _assert_production_secrets() -> None:
     }
     if settings.SECRET_KEY in bad or len(settings.SECRET_KEY) < 32:
         raise RuntimeError(
-            "Refusing to start: ENVIRONMENT=production requires a strong SECRET_KEY "
+            "Refusing to start: production and public HTTPS deployments require a strong SECRET_KEY "
             "(≥32 chars, not a documented default). See docs/DEPLOY.md."
         )
 

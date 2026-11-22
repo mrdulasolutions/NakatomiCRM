@@ -222,10 +222,18 @@ async function api(path) {
   }
   return r.json();
 }
+function cell(tag, className, text) {
+  const element = document.createElement(tag);
+  element.className = className;
+  element.textContent = text ?? "";
+  return element;
+}
 function row(key, text, time) {
-  const d = document.createElement("div"); d.className = "dash-row";
-  d.innerHTML = `<span class="k">${key}</span> ${text} ${time ? `<div class="t">${time}</div>` : ""}`;
-  return d;
+  const item = document.createElement("div");
+  item.className = "dash-row";
+  item.append(cell("span", "k", key), " ", text ?? "");
+  if (time) item.append(cell("div", "t", time));
+  return item;
 }
 function empty() { const d = document.createElement("div"); d.className = "dash-empty"; d.textContent = "— nothing yet —"; return d; }
 
@@ -311,12 +319,10 @@ async function loadKanban() {
   for (const stage of pipe.stages) {
     const col = document.createElement("div"); col.className = "col";
     const h3 = document.createElement("h3");
-    const name = stage.is_won ? `<span class="won">${esc(stage.name)}</span>`
-               : stage.is_lost ? `<span class="lost">${esc(stage.name)}</span>`
-               : esc(stage.name);
+    h3.append(cell("span", stage.is_won ? "won" : stage.is_lost ? "lost" : "", stage.name));
     const items = byStage.get(stage.id) || [];
     const total = items.reduce((acc, d) => acc + Number(d.amount || 0), 0);
-    h3.innerHTML = `${name} <span class="count">${items.length}${total ? ` · ${fmtMoney(total, items[0]?.currency || "USD")}` : ""}</span>`;
+    h3.append(" ", cell("span", "count", `${items.length}${total ? ` · ${fmtMoney(total, items[0]?.currency || "USD")}` : ""}`));
     col.appendChild(h3);
     const stack = document.createElement("div"); stack.className = "stack";
     if (!items.length) {
@@ -325,11 +331,8 @@ async function loadKanban() {
     for (const d of items) {
       const card = document.createElement("div"); card.className = "card";
       const close = d.expected_close_date ? ` · close ${new Date(d.expected_close_date).toLocaleDateString()}` : "";
-      card.innerHTML = `
-        <div class="name">${esc(d.name)}</div>
-        <div class="amt">${fmtMoney(d.amount, d.currency)}</div>
-        <div class="meta">${esc(d.status)}${close}</div>
-      `;
+      card.append(cell("div", "name", d.name), cell("div", "amt", fmtMoney(d.amount, d.currency)),
+                  cell("div", "meta", `${d.status}${close}`));
       stack.appendChild(card);
     }
     col.appendChild(stack);
@@ -352,7 +355,7 @@ async function loadWebhooks() {
     head.innerHTML = `
       <div class="wh-name">${esc(hook.name)}</div>
       <div class="wh-url">${esc(hook.url)}</div>
-      <span class="wh-badge ${badgeClass}">${badgeText}</span>
+      <span class="wh-badge ${badgeClass}">${esc(badgeText)}</span>
       <span class="meta">${hook.last_delivery_at ? "Last: " + new Date(hook.last_delivery_at).toLocaleString() : "Never fired"}</span>
     `;
     const body = document.createElement("div"); body.className = "wh-body"; body.hidden = true;
@@ -369,10 +372,10 @@ async function loadWebhooks() {
           for (const d of filtered) {
             const row = document.createElement("div"); row.className = "wh-delivery";
             const status = d.status || (d.succeeded ? "succeeded" : "pending");
-            const parts = [`<span class="status ${status}">${status}</span>`];
+            const parts = [`<span class="status ${esc(status)}">${esc(status)}</span>`];
             parts.push(`<span class="event">${esc(d.event_type)}</span>`);
-            parts.push(`<span class="meta"> · attempt ${d.attempts}`);
-            if (d.status_code != null) parts.push(` · http ${d.status_code}`);
+            parts.push(`<span class="meta"> · attempt ${esc(d.attempts)}`);
+            if (d.status_code != null) parts.push(` · http ${esc(d.status_code)}`);
             parts.push(` · ${new Date(d.created_at).toLocaleString()}</span>`);
             if (d.error) parts.push(`<div class="meta err">Error: ${esc(d.error)}</div>`);
             if (d.response_body) parts.push(`<pre>${esc(d.response_body.slice(0, 400))}</pre>`);
@@ -453,7 +456,7 @@ async function loadMemory(reset = true) {
     div.innerHTML = `
       <span class="pill connector">${esc(link.connector)}</span>
       <span class="pill entity">${esc(link.crm_entity_type)}</span>
-      <span class="ref">→ <span class="mono">${shortEid}</span> · external: <span class="mono">${esc(shortExt)}</span></span>
+      <span class="ref">→ <span class="mono">${esc(shortEid)}</span> · external: <span class="mono">${esc(shortExt)}</span></span>
       <span class="t">${new Date(link.created_at).toLocaleString()}</span>
       ${link.note ? `<div class="note">${esc(link.note)}</div>` : ""}
     `;

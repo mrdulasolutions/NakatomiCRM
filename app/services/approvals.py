@@ -125,6 +125,15 @@ def decide_approval(
     note: str | None = None,
     execute: bool = True,
 ) -> ApprovalRequest:
+    row = db.get(ApprovalRequest, row.id, populate_existing=True, with_for_update=True)
+    if not row or row.workspace_id != principal.workspace.id or row.deleted_at:
+        raise ValueError("Approval no longer available")
+    if approve and execute and row.action in EXECUTABLE_ACTIONS:
+        needed = "email:send" if row.action == "email.send" else "deals:write"
+        if not principal.can(needed):
+            from fastapi import HTTPException
+
+            raise HTTPException(403, f"Missing scope {needed} for approval execution")
     if _expire_if_needed(row):
         db.commit()
         db.refresh(row)

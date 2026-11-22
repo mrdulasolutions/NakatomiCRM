@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from datetime import UTC, datetime, timedelta
-from pathlib import PurePosixPath
 from tempfile import SpooledTemporaryFile
 from typing import Literal
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -18,7 +18,7 @@ from app.models import ApiKey, MemberRole, Workspace
 from app.oauth_grants import active_membership, oauth_metadata, oauth_scopes
 from app.scopes import has_scope
 from app.services.export import build_export
-from app.services.storage import get_storage
+from app.services.storage import get_storage, owned_storage_key
 
 ExportTarget = Literal["railway", "vps", "local"]
 DOWNLOAD_SECONDS = 600
@@ -106,19 +106,19 @@ def build_archive(
                 storage = get_storage()
                 for file in document["files"]:
                     key = file["storage_key"]
-                    path = PurePosixPath(key)
-                    if (
-                        path.is_absolute()
-                        or not path.parts
-                        or path.parts[0] != workspace.id
-                        or ".." in path.parts
-                        or "\\" in key
-                    ):
+                    if not owned_storage_key(workspace.id, key):
                         raise ValueError("A file has an unsupported storage key")
                     member = f"attachments/{file['id']}"
                     with storage.open(key) as source, bundle.open(member, "w", force_zip64=True) as output:
                         shutil.copyfileobj(source, output, length=1024 * 1024)
-                    file_entries.append({"path": member, "storage_key": key, "filename": file["filename"]})
+                    file_entries.append(
+                        {
+                            "path": member,
+                            "source_file_id": file["id"],
+                            "filename": file["filename"],
+                            "destination_key_suffix": f"imports/{hashlib.sha256(file['id'].encode()).hexdigest()}/file",
+                        }
+                    )
             bundle.writestr(
                 "manifest.json",
                 json.dumps(
@@ -140,10 +140,10 @@ def build_archive(
 {_SETUP[target]}
 
 1. Sign into the destination installation and select the destination workspace.
-2. Optionally copy each attachment from its ZIP path to its exact storage key
-   from manifest.json. For local storage, keys are relative to STORAGE_LOCAL_PATH.
-   For S3 storage, use the configured bucket and exact object keys. Only copy
-   attachments into storage you administer and check for conflicting objects.
+2. Optionally copy each attachment to a key formed from the destination
+   workspace UUID, a slash, and its destination_key_suffix in manifest.json.
+   For local storage, keys are relative to STORAGE_LOCAL_PATH. For S3, use
+   the destination bucket. Import keeps the existing object for matched files.
 3. Send workspace.json as the doc field to POST /import using an owner or admin
    credential that has export:write. Start with dry_run=true to inspect counts
    and warnings, then repeat with dry_run=false to apply.

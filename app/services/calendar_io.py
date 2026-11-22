@@ -28,13 +28,13 @@ import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Activity, CalendarFeed, Contact, EntityType, TimelineEvent
+from app.services.egress import outgoing_request
 
 log = logging.getLogger("nakatomi.calendar")
 
@@ -137,7 +137,9 @@ def sync_feed(feed: CalendarFeed) -> int:
     if feed.last_etag:
         headers["If-None-Match"] = feed.last_etag
     try:
-        r = httpx.get(feed.ics_url, headers=headers, timeout=20.0, follow_redirects=True)
+        r = outgoing_request(
+            "GET", feed.ics_url, headers=headers, timeout=20.0, redirects=3, max_bytes=4 * 1024 * 1024
+        )
     except Exception as exc:  # noqa: BLE001
         log.warning("calendar fetch failed feed=%s: %s", feed.id, exc)
         return 0

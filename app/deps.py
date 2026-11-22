@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -11,7 +12,7 @@ from typing import Any
 
 from fastapi import Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.browser_sessions import browser_principal, public_origin
@@ -304,6 +305,13 @@ def get_pagination(
 
 
 # ---------- Idempotency ----------
+def principal_idempotency_key(identity: str, role: MemberRole, scopes: list | None, key: str) -> str:
+    values = [identity, role.value, normalize_scopes(scopes), key]
+    return hmac.new(
+        settings.SECRET_KEY.encode(), json.dumps(values, separators=(",", ":")).encode(), "sha256"
+    ).hexdigest()
+
+
 def request_fingerprint(method: str, path: str, body: bytes) -> str:
     h = hashlib.sha256()
     h.update(method.encode())
@@ -347,6 +355,8 @@ def save_idempotency(
     body_bytes: bytes,
     status_code: int,
     response: dict,
+    *,
+    commit: bool = True,
 ) -> None:
     # Already stored (concurrent double-save) — ignore.
     existing = db.scalar(
@@ -367,6 +377,8 @@ def save_idempotency(
         response_body=response,
     )
     db.add(rec)
+    if not commit:
+        return
     try:
         db.commit()
     except Exception:  # noqa: BLE001 — unique race
@@ -457,6 +469,11 @@ def mcp_idempotency(
     if not idempotency_key:
         return None, (lambda *_a, **_k: None)
 
+    idempotency_key = principal_idempotency_key(
+        principal.api_key_id or principal.user_id or "", principal.role, principal.scopes, idempotency_key
+    )
+    if not db.scalar(select(func.pg_try_advisory_xact_lock(func.hashtextextended(idempotency_key, 0)))):
+        raise HTTPException(409, "Request with this key is in progress")
     path = f"mcp:{tool}"
     body_bytes = json_bytes(args)
     existing = check_idempotency(db, principal.workspace.id, idempotency_key, "MCP", path, body_bytes)
@@ -473,6 +490,7 @@ def mcp_idempotency(
             body_bytes,
             status_code,
             body,
+            commit=False,
         )
 
     return None, _save

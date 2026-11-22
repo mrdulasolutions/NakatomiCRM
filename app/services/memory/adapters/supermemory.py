@@ -58,8 +58,7 @@ class SupermemoryConnector(MemoryConnector):
             r = self._client.post("/v3/memories", json=payload)
             r.raise_for_status()
         except Exception as e:  # noqa: BLE001
-            log.warning("supermemory store failed: %s", e)
-            return None
+            raise RuntimeError("Memory write failed") from e
         data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
         ext_id = data.get("id") or ""
         return MemoryWriteResult(connector=self.name, external_id=str(ext_id), raw_response=data)
@@ -84,8 +83,7 @@ class SupermemoryConnector(MemoryConnector):
             r.raise_for_status()
             items = r.json().get("results", []) or r.json().get("items", [])
         except Exception as e:  # noqa: BLE001
-            log.warning("supermemory recall failed: %s", e)
-            return []
+            raise RuntimeError("Memory recall failed") from e
         out: list[MemoryItem] = []
         for it in items:
             out.append(

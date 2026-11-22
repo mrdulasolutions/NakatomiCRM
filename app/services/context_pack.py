@@ -75,7 +75,7 @@ def build_context_pack(
         entities = [e.model_dump() if hasattr(e, "model_dump") else e for e in _ENTITIES]
         pack["entities"] = entities
 
-    if "custom_fields" in want:
+    if "custom_fields" in want and principal.can("custom_fields:read"):
         rows = db.scalars(
             select(CustomFieldDefinition).where(CustomFieldDefinition.workspace_id == ws.id)
         ).all()
@@ -92,7 +92,7 @@ def build_context_pack(
             for r in rows
         ]
 
-    if "pipelines" in want:
+    if "pipelines" in want and principal.can("pipelines:read"):
         pipes = db.scalars(select(Pipeline).where(Pipeline.workspace_id == ws.id)).all()
         pack["pipelines"] = []
         for pipe in pipes:
@@ -120,7 +120,7 @@ def build_context_pack(
                 }
             )
 
-    if "views" in want:
+    if "views" in want and principal.can("views:read"):
         # Saved views are P2 — ship empty list + seed names as hints for agents.
         pack["views"] = []
         pack["view_presets"] = [
@@ -133,7 +133,7 @@ def build_context_pack(
         data = ws.data or {}
         policies = data.get("policies") or {}
         pack["policies"] = {
-            "approvals": policies.get("approvals") or [],
+            "approvals": (policies.get("approvals") or []) if principal.can("approvals:read") else [],
             "scopes_on_this_key": list(principal.scopes),
             "role": principal.role.value if hasattr(principal.role, "value") else str(principal.role),
             "rate_limit": {
@@ -144,49 +144,65 @@ def build_context_pack(
     if "open_work" in want:
         now = datetime.now(UTC)
         week = now + timedelta(days=7)
-        due_tasks = db.scalars(
-            select(Task)
-            .where(
-                Task.workspace_id == ws.id,
-                Task.deleted_at.is_(None),
-                Task.status.in_([TaskStatus.open, TaskStatus.in_progress]),
-                Task.due_at.is_not(None),
-                Task.due_at <= week,
-            )
-            .order_by(Task.due_at.asc())
-            .limit(25)
-        ).all()
+        due_tasks = (
+            db.scalars(
+                select(Task)
+                .where(
+                    Task.workspace_id == ws.id,
+                    Task.deleted_at.is_(None),
+                    Task.status.in_([TaskStatus.open, TaskStatus.in_progress]),
+                    Task.due_at.is_not(None),
+                    Task.due_at <= week,
+                )
+                .order_by(Task.due_at.asc())
+                .limit(25)
+            ).all()
+            if principal.can("tasks:read")
+            else []
+        )
         stale_cutoff = now - timedelta(days=14)
-        stale_deals = db.scalars(
-            select(Deal)
-            .where(
-                Deal.workspace_id == ws.id,
-                Deal.deleted_at.is_(None),
-                Deal.status == DealStatus.open,
-                Deal.updated_at < stale_cutoff,
-            )
-            .order_by(Deal.updated_at.asc())
-            .limit(25)
-        ).all()
-        pending = db.scalars(
-            select(ApprovalRequest)
-            .where(
-                ApprovalRequest.workspace_id == ws.id,
-                ApprovalRequest.deleted_at.is_(None),
-                ApprovalRequest.status == ApprovalStatus.pending,
-            )
-            .order_by(ApprovalRequest.created_at.desc())
-            .limit(25)
-        ).all()
-        failed_wh = db.scalars(
-            select(WebhookDelivery)
-            .where(
-                WebhookDelivery.workspace_id == ws.id,
-                WebhookDelivery.status.in_(["failed", "dead"]),
-            )
-            .order_by(WebhookDelivery.created_at.desc())
-            .limit(10)
-        ).all()
+        stale_deals = (
+            db.scalars(
+                select(Deal)
+                .where(
+                    Deal.workspace_id == ws.id,
+                    Deal.deleted_at.is_(None),
+                    Deal.status == DealStatus.open,
+                    Deal.updated_at < stale_cutoff,
+                )
+                .order_by(Deal.updated_at.asc())
+                .limit(25)
+            ).all()
+            if principal.can("deals:read")
+            else []
+        )
+        pending = (
+            db.scalars(
+                select(ApprovalRequest)
+                .where(
+                    ApprovalRequest.workspace_id == ws.id,
+                    ApprovalRequest.deleted_at.is_(None),
+                    ApprovalRequest.status == ApprovalStatus.pending,
+                )
+                .order_by(ApprovalRequest.created_at.desc())
+                .limit(25)
+            ).all()
+            if principal.can("approvals:read")
+            else []
+        )
+        failed_wh = (
+            db.scalars(
+                select(WebhookDelivery)
+                .where(
+                    WebhookDelivery.workspace_id == ws.id,
+                    WebhookDelivery.status.in_(["failed", "dead"]),
+                )
+                .order_by(WebhookDelivery.created_at.desc())
+                .limit(10)
+            ).all()
+            if principal.can("webhooks:read")
+            else []
+        )
         failed_out = [
             {
                 "id": d.id,
@@ -267,7 +283,7 @@ def build_context_pack(
             "binding": "rest",
         }
 
-    if "memory_connectors" in want:
+    if "memory_connectors" in want and principal.can("memory:read"):
         pack["memory_connectors"] = list(enabled_connectors())
 
     if "hints" in want:

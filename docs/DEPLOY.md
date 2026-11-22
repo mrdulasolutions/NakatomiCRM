@@ -49,6 +49,7 @@ python -m app check-config
 | `API_KEY_RATE_LIMIT_PER_MINUTE` | Recommend `120` for agent keys in production |
 | `AUTH_RATE_LIMIT_PER_MINUTE` | Recommend `30` for `/auth/login`, `/auth/signup`, `/bootstrap` |
 | `CORS_ORIGINS` | Prefer explicit origins instead of `*` in production |
+| `INTEGRATION_PRIVATE_HOSTS` | Optional comma-separated exact hostnames for trusted private webhook, calendar, SMTP, and IMAP destinations. |
 | `OTEL_ENABLED` | Optional; install OTel packages first ([OBSERVABILITY.md](./OBSERVABILITY.md)) |
 | SSO client ids | Optional ([SSO.md](./SSO.md)) |
 

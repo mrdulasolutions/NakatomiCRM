@@ -63,6 +63,7 @@ from app.models import (
 )
 from app.oauth_grants import bearer_key, oauth_metadata
 from app.scopes import has_scope, missing_scopes, normalize_scopes
+from app.services.deal_references import validate_deal_references
 from app.services.entity_patch import (
     apply_deal_patch,
     apply_lead_patch,
@@ -72,6 +73,7 @@ from app.services.entity_patch import (
     apply_task_patch,
     merge_json_data,
 )
+from app.services.events import emit
 from app.services.export_archive import (
     DOWNLOAD_SECONDS,
     ExportTarget,
@@ -80,7 +82,9 @@ from app.services.export_archive import (
 )
 from app.services.ingest import adapters as _ingest_adapters  # noqa: F401  — registers adapters
 from app.services.ingest.base import run_ingest
-from app.services.memory import enabled_connectors, get_connector
+from app.services.memory import enabled_connectors
+from app.services.memory.access import owns_entity
+from app.services.memory.recall import recall_workspace
 
 log = logging.getLogger("nakatomi.mcp")
 
@@ -205,17 +209,7 @@ def _require_scopes(principal: Principal, *needed: str) -> None:
 def _record_event(
     db, principal: Principal, *, event_type: str, entity_type: EntityType, entity_id: str, payload: dict
 ) -> None:
-    db.add(
-        TimelineEvent(
-            workspace_id=principal.workspace.id,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            event_type=event_type,
-            actor_user_id=principal.user_id,
-            actor_api_key_id=principal.api_key_id,
-            payload=payload,
-        )
-    )
+    emit(db, principal, event_type=event_type, entity_type=entity_type, entity_id=entity_id, payload=payload)
 
 
 # ---------------------------------------------------------------------------
@@ -436,10 +430,11 @@ def create_contact(
             entity_id=c.id,
             payload={"via": "mcp"},
         )
-        db.commit()
+        db.flush()
         db.refresh(c)
         out = _serialize(c)
         save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -451,12 +446,26 @@ def update_contact(ctx: Context, contact_id: str, updates: dict) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "contacts:write")
+        from app.schemas import ContactPatch
+        from app.services.custom_field_validate import validate_entity_data
+
         c = db.get(Contact, contact_id)
-        if not c or c.workspace_id != p.workspace.id:
+        if not c or c.workspace_id != p.workspace.id or c.deleted_at is not None:
             raise RuntimeError("not found")
-        for k, v in updates.items():
-            if hasattr(c, k):
-                setattr(c, k, v)
+        try:
+            updates = ContactPatch.model_validate(updates, extra="forbid").model_dump(exclude_unset=True)
+            if updates.get("data") is not None:
+                validate_entity_data(
+                    db, p.workspace.id, EntityType.contact, updates["data"], merge_existing=c.data or {}
+                )
+        except (ValidationError, ValueError) as exc:
+            raise RuntimeError("Invalid contact update") from exc
+        if updates.get("company_id") and not owns_entity(
+            db, p.workspace.id, EntityType.company, updates["company_id"]
+        ):
+            raise RuntimeError("Referenced company not found")
+        for field, value in updates.items():
+            setattr(c, field, value)
         _record_event(
             db,
             p,
@@ -553,10 +562,11 @@ def create_company(
             entity_id=c.id,
             payload={"via": "mcp"},
         )
-        db.commit()
+        db.flush()
         db.refresh(c)
         out = _serialize(c)
         _save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -582,21 +592,26 @@ def update_company(ctx: Context, company_id: str, updates: dict) -> dict:
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "companies:write")
-        c = db.get(Company, company_id)
-        if not c or c.workspace_id != p.workspace.id:
-            raise RuntimeError("not found")
-        if "data" in updates and updates["data"] is not None:
-            from app.services.custom_field_validate import validate_entity_data
+        from app.schemas import CompanyPatch
+        from app.services.custom_field_validate import validate_entity_data
 
-            try:
+        c = db.get(Company, company_id)
+        if not c or c.workspace_id != p.workspace.id or c.deleted_at is not None:
+            raise RuntimeError("not found")
+        try:
+            updates = CompanyPatch.model_validate(updates, extra="forbid").model_dump(exclude_unset=True)
+            if updates.get("data") is not None:
                 validate_entity_data(
                     db, p.workspace.id, EntityType.company, updates["data"], merge_existing=c.data or {}
                 )
-            except ValueError as exc:
-                raise RuntimeError(str(exc)) from exc
-        for k, v in updates.items():
-            if hasattr(c, k):
-                setattr(c, k, v)
+        except (ValidationError, ValueError) as exc:
+            raise RuntimeError("Invalid company update") from exc
+        if updates.get("parent_company_id") and not owns_entity(
+            db, p.workspace.id, EntityType.company, updates["parent_company_id"]
+        ):
+            raise RuntimeError("Referenced company not found")
+        for field, value in updates.items():
+            setattr(c, field, value)
         _record_event(
             db,
             p,
@@ -782,6 +797,13 @@ def create_deal(
                 raise RuntimeError("pipeline has no stages")
             stage_id = st.id
 
+        validate_deal_references(
+            db,
+            p.workspace.id,
+            pipeline_id,
+            stage_id,
+            {"primary_contact_id": primary_contact_id, "company_id": company_id},
+        )
         d = Deal(
             workspace_id=p.workspace.id,
             name=name,
@@ -805,10 +827,11 @@ def create_deal(
             entity_id=d.id,
             payload={"via": "mcp"},
         )
-        db.commit()
+        db.flush()
         db.refresh(d)
         out = _serialize(d)
         _save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -1138,10 +1161,11 @@ def create_task(
             entity_id=t.id,
             payload={"title": title},
         )
-        db.commit()
+        db.flush()
         db.refresh(t)
         out = _serialize(t)
         _save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -1361,46 +1385,20 @@ def memory_recall(
     p, db = _principal_from_ctx(ctx)
     try:
         _require_scopes(p, "memory:read")
-        targets = connectors or list(enabled_connectors().keys())
-        out: list[dict] = []
-        for name in targets:
-            connector = get_connector(name)
-            if not connector:
-                continue
-            try:
-                got = connector.recall(
-                    workspace_id=p.workspace.id,
-                    query=query,
-                    crm_entity_type=entity_type,
-                    crm_entity_id=entity_id,
-                    limit=limit,
-                )
-            except Exception as e:  # noqa: BLE001
-                log.warning("recall on '%s' failed: %s", name, e)
-                continue
-            for m in got:
-                links = db.scalars(
-                    select(MemoryLink).where(
-                        MemoryLink.workspace_id == p.workspace.id,
-                        MemoryLink.connector == name,
-                        MemoryLink.external_id == m.external_id,
-                    )
-                ).all()
-                out.append(
-                    {
-                        "connector": m.connector,
-                        "external_id": m.external_id,
-                        "text": m.text,
-                        "score": m.score,
-                        "metadata": m.metadata,
-                        "crm_links": [
-                            f"{link.crm_entity_type.value if hasattr(link.crm_entity_type, 'value') else link.crm_entity_type}:{link.crm_entity_id}"
-                            for link in links
-                        ],
-                    }
-                )
-        out.sort(key=lambda x: x["score"], reverse=True)
-        return out[:limit]
+        if not 1 <= limit <= 100:
+            raise RuntimeError("limit must be between 1 and 100")
+        items, failed = recall_workspace(
+            db,
+            workspace_id=p.workspace.id,
+            query=query,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            limit=limit,
+            connectors=connectors,
+        )
+        if not items and failed:
+            raise RuntimeError(f"No memory results. Could not query: {', '.join(failed)}")
+        return items
     finally:
         db.close()
 
@@ -1424,6 +1422,8 @@ def memory_link(
             et = EntityType(crm_entity_type)
         except ValueError:
             raise RuntimeError(f"unknown crm_entity_type '{crm_entity_type}'")
+        if not owns_entity(db, p.workspace.id, et, crm_entity_id):
+            raise RuntimeError("CRM entity not found")
         link = MemoryLink(
             workspace_id=p.workspace.id,
             connector=connector,
@@ -1616,9 +1616,10 @@ def create_product(
             entity_id=prod.id,
             payload={"via": "mcp"},
         )
-        db.commit()
+        db.flush()
         out = _serialize(prod)
         _save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -1797,9 +1798,10 @@ def add_line_item(
                 "via": "mcp",
             },
         )
-        db.commit()
+        db.flush()
         out = _serialize(line)
         _save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -2194,7 +2196,7 @@ def decide_approval(
 
     p, db = _principal_from_ctx(ctx)
     try:
-        _require_scopes(p, "approvals:write")
+        _require_scopes(p, "approvals:write", "approvals:decide")
         if p.role not in (MemberRole.owner, MemberRole.admin) and not has_scope(p.scopes, "admin:keys"):
             raise RuntimeError(
                 "deciding approvals requires owner/admin or admin:keys; "
@@ -2561,13 +2563,14 @@ def upsert_account_map(
             db.flush()
             rel_ids.append(rel.id)
 
-        db.commit()
+        db.flush()
         out = {
             "company_id": company.id,
             "contact_ids": contact_ids,
             "relationship_ids": rel_ids,
         }
         save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -2656,7 +2659,7 @@ def advance_deal(
             db.add(t)
             db.flush()
             task_id = t.id
-        db.commit()
+        db.flush()
         db.refresh(deal)
         out = {
             "deal": _serialize(deal),
@@ -2665,6 +2668,7 @@ def advance_deal(
             "task_id": task_id,
         }
         save(200, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -2735,9 +2739,10 @@ def log_interaction(
             db.add(n)
             db.flush()
             note_id = n.id
-        db.commit()
+        db.flush()
         out = {"activity_id": act.id, "note_id": note_id}
         save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -2806,10 +2811,11 @@ def create_lead(
             entity_id=row.id,
             payload={"via": "mcp"},
         )
-        db.commit()
+        db.flush()
         db.refresh(row)
         out = _serialize(row)
         save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
@@ -3059,10 +3065,11 @@ def create_quote(
             db.add(QuoteLineItem(quote_id=row.id, **fields))
         db.flush()
         _recalc(db, row)
-        db.commit()
+        db.flush()
         db.refresh(row)
         out = _serialize(row)
         save(201, out)
+        db.commit()
         return out
     finally:
         db.close()
