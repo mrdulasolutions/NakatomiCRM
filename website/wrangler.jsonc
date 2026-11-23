@@ -1,0 +1,19 @@
+{
+  "name": "nakatomi-crm-site",
+  "main": "./src/worker.js",
+  "compatibility_date": "2026-11-22",
+  "workers_dev": true,
+  "routes": [{ "pattern": "nakatomicrm.app", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/agent"],
+    "not_found_handling": "404-page"
+  },
+  "ai": { "binding": "AI" },
+  "durable_objects": { "bindings": [{ "name": "DEMO_BUDGET", "class_name": "DemoBudget" }] },
+  "migrations": [{ "tag": "demo-budget-v1", "new_sqlite_classes": ["DemoBudget"] }],
+  "ratelimits": [
+    { "name": "AGENT_LIMIT", "namespace_id": "117", "simple": { "limit": 3, "period": 60 } }
+  ]
+}

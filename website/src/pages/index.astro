@@ -1,0 +1,23 @@
+---
+import icon from '../../../public/icon.png';
+import { Desktop } from '../components/Desktop';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
+import '../styles/globals.css';
+import './site.css';
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nakatomi CRM | Agent Lab</title>
+  <meta name="description" content="Try an AI agent on a sample Nakatomi CRM workspace or connect your own self-hosted instance." />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="icon" href={icon.src} />
+</head>
+<body>
+  <Desktop client:load icon={icon.src} />
+  <noscript><p class="noscript">Agent Lab requires JavaScript. <a href="https://github.com/mrdulasolutions/NakatomiCRM/wiki">Read the Nakatomi documentation</a>.</p></noscript>
+</body>
+</html>

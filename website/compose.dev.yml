@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nakatomi
+      POSTGRES_PASSWORD: local-demo
+      POSTGRES_DB: nakatomi
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "nakatomi"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  api:
+    build:
+      context: ..
+      dockerfile: website/Dockerfile.dev
+    environment:
+      DATABASE_URL: postgresql+psycopg://nakatomi:local-demo@postgres/nakatomi
+      SECRET_KEY: local-demo-only-secret-not-for-production
+      ENVIRONMENT: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8788:8000"
+volumes:
+  db:
