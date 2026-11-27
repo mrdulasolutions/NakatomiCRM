@@ -14,7 +14,7 @@ alembic==1.20.0
 pydantic==2.13.5
 pydantic[email]==2.13.5
 pydantic-settings==2.15.0
-email-validator==2.3.0
+email-validator==2.4.0
 
 # Auth (JWT user sessions + API key hashing)
 PyJWT[crypto]==2.15.1
