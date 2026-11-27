@@ -6,7 +6,7 @@ fastapi==0.141.1
 uvicorn[standard]==0.54.0
 
 # DB + migrations (Postgres-only; JSONB / pg_trgm required)
-sqlalchemy==2.0.54
+sqlalchemy==2.1.9
 psycopg[binary]==3.3.6
 alembic==1.20.0
 
